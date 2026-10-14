@@ -6,7 +6,7 @@ MCQForge is a document-based MCQ practice and assessment platform designed to tu
 
 Built with a focus on software reliability, performance, accessibility, and a distinctive brutalist editorial interface.
 
-> **Development status:** The App Router foundation, document validation, PDF/DOCX/TXT text extraction, conservative MCQ detection, and upload processing summary are implemented. Review editing, assessments, Redis-backed temporary sessions, and results are not implemented yet.
+> **Development status:** The App Router foundation, document validation and extraction, and question review/correction are implemented. Test configuration, assessments, durable temporary sessions, and results are not implemented yet.
 
 ## Overview
 
@@ -36,7 +36,6 @@ Implemented in this phase:
 
 Still planned for Version 1:
 
-- **Question review:** Edit, validate, or remove extracted questions before testing.
 - **Randomized assessments:** Select questions without replacement, with a maximum of 100 questions per test.
 - **Flexible timing:** Choose timed or untimed mode; select a permitted duration before starting a timed test.
 - **Answer navigation:** Move between questions and update answers before submission.
@@ -44,7 +43,7 @@ Still planned for Version 1:
 - **Automatic scoring:** Calculate correct, incorrect, and unanswered counts.
 - **Detailed results:** Display the final score, percentage, and question-by-question answer review.
 - **Anonymous usage:** No registration or login required.
-- **Temporary data:** Store session and assessment state temporarily with a defined expiration policy.
+- **Temporary data:** Review data currently expires after two hours in a process-local development adapter; durable session storage is still planned.
 - **Brutalist interface:** High-contrast colors, bold typography, hard edges, and responsive layouts.
 - **Testing and CI:** Automated checks for core logic, API behavior, and important user workflows.
 
@@ -55,7 +54,8 @@ Still planned for Version 1:
 - Extraction quality depends on the structure and readability of the uploaded document.
 - Extraction is intentionally conservative and favors numbered questions with clearly labeled option lines. Unnumbered or heavily laid-out questions may be reported as unrecognized or need manual review.
 - The upload endpoint returns extracted answers only as part of the pre-test review response. There is not yet an assessment flow that isolates answer keys from a test-taking client.
-- Uploads are handled in memory by the route handler and are not persisted. The default maximum file size is 4 MiB; processing also limits PDFs to 300 pages, extracted text to 1,000,000 characters, and expanded DOCX content to 20 MiB.
+- Upload parsing and review data are held in memory and are not persisted. Review data is owned by an HttpOnly session cookie and expires after two hours, but a server restart or a request routed to a different server instance will make it unavailable. This process-local adapter is for local development only, not reliable production storage; replace it through `DocumentReviewStore` when durable session storage is implemented.
+- The default maximum file size is 4 MiB; processing also limits PDFs to 300 pages, extracted text to 1,000,000 characters, expanded DOCX content to 20 MiB, and a review set to 1,000 questions.
 - AI-generated questions, AI explanations, permanent test history, and user accounts are outside the initial scope.
 
 ## Tech stack
@@ -76,6 +76,8 @@ Still planned for Version 1:
 | Deployment | Vercel or a compatible host |
 
 The application uses Next.js Route Handlers for its backend API, with parsing, assessment, scoring, validation, and session management separated into focused modules.
+
+Question review is available at `/review/[documentId]`. Its owner-scoped APIs load, save, remove, and confirm questions under `/api/documents/parse/[documentId]`; all edits are validated server-side and saved with optimistic revisions. Confirmation currently leads to an informational configuration handoff, not a working assessment.
 
 ## Architecture
 
@@ -106,7 +108,7 @@ Next.js App Router
          +-- Temporary results
 ```
 
-The server validates and parses documents. Once assessment APIs are implemented, correct answers must remain server-side until a test is finalized; the current parse response is used only in the pre-test review stage.
+The server validates and parses documents, then stores the authoritative review questions behind an owner-scoped review-store interface. Review edits and confirmation are Zod-validated on the server and use optimistic revisions with idempotency keys. Once assessment APIs are implemented, correct answers must remain server-side until a test is finalized; the current review response exposes them only in the pre-test review stage.
 
 ## Scoring rules
 
@@ -194,7 +196,7 @@ MAX_DOCUMENT_UPLOAD_BYTES=4194304
 
 The value must be an integer from 1,024 bytes through 52,428,800 bytes (50 MiB). If unset, the endpoint defaults to 4 MiB. Keep the value within the hosting platform's request-body limit. For example, Vercel Functions currently have a 4.5 MB request/response payload limit; multipart overhead counts toward that cap, and a platform may reject a request before the route can return its own error. Larger configured uploads may therefore require a host with a higher body limit or direct-to-storage uploads in a later phase.
 
-No Redis credentials are required for the current parser or local UI. Temporary session storage is not implemented yet. When that phase is added, its server-only configuration may include:
+No Redis credentials are required for the parser or review workflow. Review data currently uses the process-local `InMemoryDocumentReviewStore`; it is intentionally not a production persistence fallback. When durable temporary storage is implemented, its server-only configuration may include:
 
 ```dotenv
 UPSTASH_REDIS_REST_URL=
@@ -234,6 +236,8 @@ The current tests exercise:
 - Missing and duplicate options, missing/invalid answer keys, multiple answers, and ambiguous boundaries
 - Real minimal PDF.js, Mammoth DOCX, and UTF-8 TXT parsing, including textless/corrupt inputs
 - Upload endpoint success and actionable validation errors
+- Server-side review edit validation, owner isolation, revision conflicts, repeated-save idempotency, expired reviews, and empty-set removal
+- Review edit completeness rules, removal of stale validation issues, and duplicated option text
 
 Later assessment/session tests should cover:
 
@@ -259,16 +263,21 @@ The implementation is organized around responsibilities. The current structure i
 src/
 ├── app/
 │   ├── api/documents/parse/
+│   ├── configure/
+│   └── review/
 │   ├── globals.css
 │   └── page.tsx
 ├── application/
 │   ├── config/
 │   └── services/
+├── application/ports/
 ├── components/
 │   ├── ui/
 │   └── upload/
 ├── domain/
-├── infrastructure/document-parsers/
+├── infrastructure/
+│   ├── document-parsers/
+│   └── storage/
 └── validation/
 ```
 
@@ -276,11 +285,11 @@ src/
 
 - [x] Project foundation and brutalist design system
 - [x] PDF, DOCX, and TXT parsing
-- [ ] Question validation and correction
+- [x] Question validation and correction
 - [ ] Test configuration and random selection
 - [ ] Assessment interface and timer
 - [ ] Server-side scoring and results review
-- [ ] Temporary sessions and security hardening
+- [ ] Durable temporary sessions and security hardening
 - [ ] Unit, integration, and end-to-end tests
 - [ ] CI pipeline and deployment verification
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useRef, useState, type ChangeEvent } from "react";
 import { documentFileNameSchema } from "@/validation/document-upload";
 import {
@@ -9,10 +10,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { ErrorMessage } from "@/components/ui/error-message";
 
-type ParseResult = ReturnType<
-  typeof documentProcessingResponseSchema.parse
->;
-
 function formatFileSize(size: number) {
   if (size < 1024) return `${size} bytes`;
   if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
@@ -20,9 +17,9 @@ function formatFileSize(size: number) {
 }
 
 export function DocumentUpload() {
+  const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [parseResult, setParseResult] = useState<ParseResult | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,20 +30,17 @@ export function DocumentUpload() {
     const result = documentFileNameSchema.safeParse(file.name);
     if (!result.success) {
       setSelectedFile(null);
-      setParseResult(null);
       setError("Choose a PDF, DOCX, or TXT document.");
       event.currentTarget.value = "";
       return;
     }
 
     setSelectedFile(file);
-    setParseResult(null);
     setError(null);
   }
 
   function clearSelection() {
     setSelectedFile(null);
-    setParseResult(null);
     setError(null);
     if (inputRef.current) inputRef.current.value = "";
   }
@@ -56,7 +50,6 @@ export function DocumentUpload() {
 
     setIsProcessing(true);
     setError(null);
-    setParseResult(null);
     const formData = new FormData();
     formData.set("file", selectedFile);
 
@@ -82,7 +75,7 @@ export function DocumentUpload() {
         setError("The server returned an invalid document processing result.");
         return;
       }
-      setParseResult(parsedResult.data);
+      router.push(`/review/${parsedResult.data.documentId}`);
     } catch {
       setError("Could not reach the document processing service. Please try again.");
     } finally {
@@ -156,55 +149,6 @@ export function DocumentUpload() {
         <p className="processing-status" role="status">
           Processing your document. Larger documents may take a little longer.
         </p>
-      )}
-
-      {parseResult && (
-        <section
-          className="parse-result"
-          aria-labelledby="parse-result-title"
-          aria-live="polite"
-        >
-          <div className="parse-result-heading">
-            <h2 id="parse-result-title">Extraction complete</h2>
-            <span className="parse-result-format">
-              {parseResult.metadata.extension.toUpperCase()}
-            </span>
-          </div>
-          <dl className="parse-counts">
-            <div>
-              <dt>Detected</dt>
-              <dd>{parseResult.totalQuestions}</dd>
-            </div>
-            <div>
-              <dt>Valid</dt>
-              <dd>{parseResult.validQuestions}</dd>
-            </div>
-            <div>
-              <dt>Review</dt>
-              <dd>{parseResult.questionsRequiringReview}</dd>
-            </div>
-          </dl>
-          {parseResult.warnings.length > 0 && (
-            <ul className="parse-warnings">
-              {parseResult.warnings.map((warning, index) => (
-                <li key={`${warning.code}-${index}`}>{warning.message}</li>
-              ))}
-            </ul>
-          )}
-          {parseResult.totalQuestions > 0 && (
-            <p className="parse-result-note">
-              Correct answers were identified for review only. Test-taking is
-              not available in this phase.
-            </p>
-          )}
-          <button
-            className="text-button parse-reset"
-            onClick={clearSelection}
-            type="button"
-          >
-            Parse another document
-          </button>
-        </section>
       )}
 
       <span className="sr-only" id="upload-help">

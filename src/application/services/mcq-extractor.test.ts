@@ -93,7 +93,7 @@ describe("MCQ extraction and validation", () => {
       correctOption: "A",
       status: "valid",
     });
-    expect(result.questions[0].sourceText).toContain("1. C");
+    expect(result.questions[0].sourceText).toContain("D: Fourth");
     expect(result.questions[0].id).not.toBe("1");
     expect(result.warnings).toEqual([]);
   });

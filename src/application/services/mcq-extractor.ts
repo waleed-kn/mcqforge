@@ -149,14 +149,13 @@ function addIssue(issues: QuestionIssue[], code: QuestionIssue["code"], message:
 function resolveAnswer(
   draft: QuestionDraft,
   answerReferences: Map<string, Set<string>>,
-  answerKeySourceLines: Map<string, Set<string>>,
   duplicateNumbers: Set<string>,
 ) {
   const issues: QuestionIssue[] = [];
   const prompt = draft.promptLines.join(" ").replace(/\s+/g, " ").trim();
   if (!prompt) addIssue(issues, "missing_prompt", "Question text could not be identified.");
 
-  const options: Partial<Record<AnswerOptionId, string>> = {};
+  const options = {} as Record<AnswerOptionId, string>;
   for (const label of answerOptionIds) {
     const values = draft.options.get(label) ?? [];
     const optionText = values.join(" ").replace(/\s+/g, " ").trim();
@@ -167,10 +166,9 @@ function resolveAnswer(
         `Option ${label} appears more than once.`,
       );
     }
+    options[label] = optionText;
     if (!optionText) {
       addIssue(issues, "missing_option", `Option ${label} is missing or empty.`);
-    } else {
-      options[label] = optionText;
     }
   }
 
@@ -231,8 +229,7 @@ function resolveAnswer(
     addIssue(issues, "missing_answer_key", "No answer key was found for this question.");
   }
 
-  const externalKeyLines = answerKeySourceLines.get(draft.sourceNumber ?? "") ?? [];
-  const sourceText = [...draft.rawLines, ...externalKeyLines].join("\n").trim();
+  const sourceText = draft.rawLines.join("\n").trim().slice(0, 20_000);
   return {
     id: randomUUID(),
     sourceNumber: draft.sourceNumber,
@@ -271,17 +268,11 @@ export function extractMultipleChoiceQuestions(
     current = null;
   }
 
-  function addAnswerReference(reference: AnswerReference, sourceLine: string) {
+  function addAnswerReference(reference: AnswerReference) {
     const answers = answerReferences.get(reference.questionNumber) ?? new Set<string>();
     answers.add(reference.answer);
     answerReferences.set(reference.questionNumber, answers);
-    const sourceLines =
-      answerKeySourceLines.get(reference.questionNumber) ?? new Set<string>();
-    sourceLines.add(sourceLine);
-    answerKeySourceLines.set(reference.questionNumber, sourceLines);
   }
-
-  const answerKeySourceLines = new Map<string, Set<string>>();
 
   for (const { text, pageNumber } of lines) {
     if (!text) continue;
@@ -291,7 +282,7 @@ export function extractMultipleChoiceQuestions(
       inAnswerKey = true;
       saveCurrent();
       for (const reference of parseAnswerKeyLine(keyHeading[1] ?? "")) {
-        addAnswerReference(reference, text);
+        addAnswerReference(reference);
       }
       continue;
     }
@@ -300,7 +291,7 @@ export function extractMultipleChoiceQuestions(
       const keyReferences = parseAnswerKeyLine(text);
       if (keyReferences.length) {
         for (const reference of keyReferences) {
-          addAnswerReference(reference, text);
+          addAnswerReference(reference);
         }
         continue;
       } else if (!detectQuestionBoundary(text)) {
@@ -440,7 +431,6 @@ export function extractMultipleChoiceQuestions(
       resolveAnswer(
         draft,
         answerReferences,
-        answerKeySourceLines,
         duplicateNumbers,
       ),
     ),

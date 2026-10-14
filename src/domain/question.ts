@@ -25,7 +25,7 @@ export type MultipleChoiceQuestion = {
   sourceNumber: string | null;
   sourcePageNumbers: number[];
   prompt: string;
-  options: Partial<Record<AnswerOptionId, string>>;
+  options: Record<AnswerOptionId, string>;
   correctOption: AnswerOptionId | null;
   sourceText: string;
   issues: QuestionIssue[];

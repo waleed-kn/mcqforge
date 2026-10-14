@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { NextRequest } from "next/server";
 import { POST } from "./route";
 
 function createRequest(file?: File) {
   const formData = new FormData();
   if (file) formData.set("file", file);
-  return new Request("http://localhost/api/documents/parse", {
+  return new NextRequest("http://localhost/api/documents/parse", {
     method: "POST",
     body: formData,
   });
@@ -24,12 +25,15 @@ describe("POST /api/documents/parse", () => {
 
     expect(response.status).toBe(200);
     expect(body).toMatchObject({
-      status: "completed",
-      totalQuestions: 1,
-      validQuestions: 1,
-      questionsRequiringReview: 0,
+      revision: 0,
+      summary: {
+        totalQuestions: 1,
+        validQuestions: 1,
+        questionsRequiringReview: 0,
+      },
     });
-    expect(body.questions[0].correctOption).toBe("B");
+    expect(body.documentId).toBeTruthy();
+    expect(body.questions).toBeUndefined();
   });
 
   it("returns actionable validation errors for missing or invalid uploads", async () => {
