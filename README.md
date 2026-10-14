@@ -6,7 +6,7 @@ MCQForge is a document-based MCQ practice and assessment platform designed to tu
 
 Built with a focus on software reliability, performance, accessibility, and a distinctive brutalist editorial interface.
 
-> **Development status:** In active development. Features are being implemented and verified incrementally. Check the repository's current implementation before relying on any feature in production.
+> **Development status:** The App Router foundation, document validation, PDF/DOCX/TXT text extraction, conservative MCQ detection, and upload processing summary are implemented. Review editing, assessments, Redis-backed temporary sessions, and results are not implemented yet.
 
 ## Overview
 
@@ -27,11 +27,15 @@ MCQForge aims to make that workflow interactive, repeatable, and easy to use wit
 
 ## Features
 
-The following is the intended Version 1 feature set. Individual features should be marked complete only after their implementation and tests have been verified.
+Implemented in this phase:
 
-- **Document ingestion:** Support for PDF, DOCX, and TXT files.
-- **Question extraction:** Identify question text, four options (A–D), and answer keys.
-- **Extraction validation:** Flag malformed or ambiguous questions rather than silently guessing.
+- **Document ingestion:** Server-side PDF, DOCX, and UTF-8 TXT validation and text extraction.
+- **Question extraction:** Recognize common numbered question boundaries, A–D option labels, inline answer lines, and separate answer-key references.
+- **Extraction validation:** Mark questions needing review for missing/duplicate options, missing or invalid keys, multiple answers, or ambiguous numbering/boundaries.
+- **Upload feedback:** Display processing errors and detected, valid, and review-required question counts.
+
+Still planned for Version 1:
+
 - **Question review:** Edit, validate, or remove extracted questions before testing.
 - **Randomized assessments:** Select questions without replacement, with a maximum of 100 questions per test.
 - **Flexible timing:** Choose timed or untimed mode; select a permitted duration before starting a timed test.
@@ -49,6 +53,9 @@ The following is the intended Version 1 feature set. Individual features should 
 - Scanned PDFs requiring OCR are not supported unless OCR is added in a later version.
 - The initial question model supports four options (A–D) and one correct answer per question.
 - Extraction quality depends on the structure and readability of the uploaded document.
+- Extraction is intentionally conservative and favors numbered questions with clearly labeled option lines. Unnumbered or heavily laid-out questions may be reported as unrecognized or need manual review.
+- The upload endpoint returns extracted answers only as part of the pre-test review response. There is not yet an assessment flow that isolates answer keys from a test-taking client.
+- Uploads are handled in memory by the route handler and are not persisted. The default maximum file size is 4 MiB; processing also limits PDFs to 300 pages, extracted text to 1,000,000 characters, and expanded DOCX content to 20 MiB.
 - AI-generated questions, AI explanations, permanent test history, and user accounts are outside the initial scope.
 
 ## Tech stack
@@ -99,7 +106,7 @@ Next.js App Router
          +-- Temporary results
 ```
 
-The server is responsible for authoritative validation, deadlines, submissions, and scoring. Correct answers must not be sent to the browser before the assessment is finalized.
+The server validates and parses documents. Once assessment APIs are implemented, correct answers must remain server-side until a test is finalized; the current parse response is used only in the pre-test review stage.
 
 ## Scoring rules
 
@@ -136,10 +143,9 @@ The interface prioritizes clarity and usability over decorative effects. It avoi
 
 ### Prerequisites
 
-- Node.js version compatible with the installed Next.js release
+- Node.js 20.16+ or 22.3+ (required by the selected PDF.js release)
 - npm or the package manager used by the repository
 - Git
-- An Upstash Redis database for the configured persistent temporary-storage implementation
 
 ### Installation
 
@@ -156,20 +162,6 @@ Install dependencies:
 npm install
 ```
 
-Create a local environment file:
-
-```bash
-cp .env.example .env.local
-```
-
-On Windows PowerShell, if needed:
-
-```powershell
-Copy-Item .env.example .env.local
-```
-
-Configure the required environment variables using the example file and your own credentials. Never commit `.env.local` or real secrets.
-
 Start the development server:
 
 ```bash
@@ -180,13 +172,13 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ### Available scripts
 
-Use the scripts defined in the project's `package.json`. A typical setup includes:
+The current project scripts are:
 
 ```bash
 npm run dev
 npm run lint
-npx tsc --noEmit
-npx vitest run
+npm run typecheck
+npm test
 npm run build
 ```
 
@@ -194,16 +186,24 @@ Playwright tests may require additional browser installation and configuration. 
 
 ## Configuration
 
-The environment example should document the variables actually used by the implementation.
+Document-processing configuration is server-side and optional for local development:
 
-For the Redis-backed deployment, these commonly include:
+```dotenv
+MAX_DOCUMENT_UPLOAD_BYTES=4194304
+```
+
+The value must be an integer from 1,024 bytes through 52,428,800 bytes (50 MiB). If unset, the endpoint defaults to 4 MiB. Keep the value within the hosting platform's request-body limit. For example, Vercel Functions currently have a 4.5 MB request/response payload limit; multipart overhead counts toward that cap, and a platform may reject a request before the route can return its own error. Larger configured uploads may therefore require a host with a higher body limit or direct-to-storage uploads in a later phase.
+
+No Redis credentials are required for the current parser or local UI. Temporary session storage is not implemented yet. When that phase is added, its server-only configuration may include:
 
 ```dotenv
 UPSTASH_REDIS_REST_URL=
 UPSTASH_REDIS_REST_TOKEN=
 ```
 
-Use placeholders only in `.env.example`. Never put real credentials in source code or public environment variables.
+These Redis values are not read by the current code. Never put real credentials in source code or public environment variables.
+
+The current PDF parser uses the `pdfjs-dist/legacy/build/pdf.mjs` Node entry point (not its browser viewer or worker bundle). It has been exercised in the Node server runtime used for the production build. It extracts selectable text only; image-only/scanned PDFs fail with an explicit OCR-not-supported message.
 
 The application should fail clearly when required production storage configuration is missing. It must not silently pretend that in-memory storage provides reliable persistence across serverless requests.
 
@@ -228,7 +228,14 @@ Temporary expiration is not a promise of immediate physical erasure from every i
 
 ## Testing strategy
 
-The test suite should cover:
+The current tests exercise:
+
+- Text normalization and question/option/answer-key boundary helpers
+- Missing and duplicate options, missing/invalid answer keys, multiple answers, and ambiguous boundaries
+- Real minimal PDF.js, Mammoth DOCX, and UTF-8 TXT parsing, including textless/corrupt inputs
+- Upload endpoint success and actionable validation errors
+
+Later assessment/session tests should cover:
 
 - Parsing of valid and malformed PDF, DOCX, and TXT files
 - Question and answer-key validation
@@ -246,36 +253,29 @@ Automated tests and production builds should pass before a release is considered
 
 ## Project structure
 
-The repository is organized around responsibilities. The final structure may evolve as the implementation progresses.
+The implementation is organized around responsibilities. The current structure includes:
 
 ```text
 src/
 ├── app/
-│   ├── api/
-│   ├── upload/
-│   ├── review/
-│   ├── configure/
-│   ├── test/
-│   └── results/
+│   ├── api/documents/parse/
+│   ├── globals.css
+│   └── page.tsx
+├── application/
+│   ├── config/
+│   └── services/
 ├── components/
-├── lib/
-│   ├── parsers/
-│   ├── question-extraction/
-│   ├── assessment/
-│   ├── sessions/
-│   ├── validation/
-│   └── storage/
-├── types/
-└── tests/
-    ├── parsing/
-    ├── assessment/
-    └── api/
+│   ├── ui/
+│   └── upload/
+├── domain/
+├── infrastructure/document-parsers/
+└── validation/
 ```
 
 ## Roadmap
 
-- [ ] Project foundation and brutalist design system
-- [ ] PDF, DOCX, and TXT parsing
+- [x] Project foundation and brutalist design system
+- [x] PDF, DOCX, and TXT parsing
 - [ ] Question validation and correction
 - [ ] Test configuration and random selection
 - [ ] Assessment interface and timer

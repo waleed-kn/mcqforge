@@ -82,7 +82,7 @@ export default function Home() {
 
       <footer className="site-footer">
         <span>MCQFORGE / STUDY ON YOUR TERMS</span>
-        <span>DOCUMENT PROCESSING IS NOT AVAILABLE YET</span>
+        <span>DOCUMENT EXTRACTION / PDF · DOCX · TXT</span>
       </footer>
     </main>
   );
