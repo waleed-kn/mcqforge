@@ -61,13 +61,50 @@ export const activeAssessmentSchema = z
     createdAt: z.number().int(),
     startedAt: z.number().int(),
     deadline: z.number().int().nullable(),
+    submittedAt: z.number().int().nullable(),
     expiresAt: z.number().int(),
+    answers: z.record(z.string().uuid(), z.enum(["A", "B", "C", "D"])),
+    revision: z.number().int().nonnegative(),
   })
   .strict();
 
 export const activeAssessmentResponseSchema = z.object({
   assessment: activeAssessmentSchema,
   idempotent: z.boolean().optional(),
+});
+
+export const answerUpdateSchema = z
+  .object({
+    questionId: z.string().uuid(),
+    answer: z.enum(["A", "B", "C", "D"]),
+    expectedRevision: z.number().int().nonnegative(),
+    mutationId: z.string().uuid(),
+  })
+  .strict();
+
+export const assessmentMutationResponseSchema = z.object({
+  assessment: activeAssessmentSchema,
+  idempotent: z.boolean().optional(),
+  summary: z.object({
+    answered: z.number().int().nonnegative(),
+    unanswered: z.number().int().nonnegative(),
+    submittedAt: z.number().int(),
+    timedOut: z.boolean(),
+  }).optional(),
+});
+
+export const assessmentErrorResponseSchema = z.object({
+  error: z.object({
+    code: z.string(),
+    message: z.string(),
+  }),
+  assessment: activeAssessmentSchema.optional(),
+  summary: z.object({
+    answered: z.number().int().nonnegative(),
+    unanswered: z.number().int().nonnegative(),
+    submittedAt: z.number().int(),
+    timedOut: z.boolean(),
+  }).optional(),
 });
 
 export type AssessmentConfigurationRequest = z.infer<

@@ -96,6 +96,9 @@ export function createAssessmentRecord(input: {
         correctOption,
       }),
     ),
+    answers: {},
+    revision: 0,
+    lastMutationId: null,
     status: "in_progress",
     createdAt: now,
     startedAt: now,
@@ -103,6 +106,7 @@ export function createAssessmentRecord(input: {
       configuration.mode === "timed"
         ? now + (configuration.durationMinutes ?? 0) * 60_000
         : null,
+    submittedAt: null,
     expiresAt: now + assessmentTtlSeconds * 1000,
   };
 }

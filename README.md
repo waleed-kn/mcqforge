@@ -6,7 +6,7 @@ MCQForge is a document-based MCQ practice and assessment platform designed to tu
 
 Built with a focus on software reliability, performance, accessibility, and a distinctive brutalist editorial interface.
 
-> **Development status:** The App Router foundation, document extraction, question review, and server-side test configuration/question selection are implemented. The interactive test-taking flow, scoring, durable temporary sessions, and results are not implemented yet.
+> **Development status:** The App Router foundation, document extraction, question review, test configuration, and server-enforced assessment engine with answer persistence are implemented. Scoring, durable temporary sessions, and results are not implemented yet.
 
 ## Overview
 
@@ -36,11 +36,10 @@ Implemented in this phase:
 - **Question review:** Edit, validate, save, cancel, search, filter, and remove extracted questions before testing; only complete questions can proceed.
 - **Test configuration:** Select 1–100 available valid questions, choose timed or untimed mode, and select a duration for timed tests.
 - **Stable test creation:** Randomly select questions without replacement, record an immutable in-progress snapshot and server timestamps, and keep correct answers out of active-test responses.
+- **Assessment engine:** Navigate questions, persist answer updates, enforce server-side deadlines, and finalize tests manually or automatically on timeout.
 
 Still planned for Version 1:
 
-- **Interactive assessment:** Move between questions and update answers before submission.
-- **Automatic submission:** Enforce the deadline on the server for timed assessments.
 - **Automatic scoring:** Calculate correct, incorrect, and unanswered counts.
 - **Detailed results:** Display the final score, percentage, and question-by-question answer review.
 - **Anonymous usage:** No registration or login required.
@@ -54,7 +53,7 @@ Still planned for Version 1:
 - The initial question model supports four options (A–D) and one correct answer per question.
 - Extraction quality depends on the structure and readability of the uploaded document.
 - Extraction is intentionally conservative and favors numbered questions with clearly labeled option lines. Unnumbered or heavily laid-out questions may be reported as unrecognized or need manual review.
-- The review endpoint returns extracted answers only during the pre-test review stage. Test creation and reload return question snapshots without correct answers, but the interactive test-taking flow and scoring are not implemented.
+- The review endpoint returns extracted answers only during the pre-test review stage. Test creation and reload return question snapshots without correct answers; the interactive test workflow is implemented, but scoring is not.
 - Upload parsing, review data, and test snapshots are held in memory and are not persisted. They are owned by an HttpOnly session cookie and expire after two hours, but a server restart or a request routed to a different server instance will make them unavailable. These process-local adapters are for local development only, not reliable production storage; replace them through `DocumentReviewStore` and `AssessmentStore` when shared temporary storage is implemented.
 - The default maximum file size is 4 MiB; processing also limits PDFs to 300 pages, extracted text to 1,000,000 characters, expanded DOCX content to 20 MiB, and a review set to 1,000 questions.
 - AI-generated questions, AI explanations, permanent test history, and user accounts are outside the initial scope.
@@ -78,9 +77,11 @@ Still planned for Version 1:
 
 The application uses Next.js Route Handlers for its backend API, with parsing, assessment, scoring, validation, and session management separated into focused modules.
 
-Question review is available at `/review/[documentId]`. Its owner-scoped APIs load, save, remove, and confirm questions under `/api/documents/parse/[documentId]`; all edits are validated server-side and saved with optimistic revisions. Confirmed documents lead to test configuration at `/configure/[documentId]`. `POST /api/tests` validates the configuration and creates a server-owned question snapshot; `GET /api/tests/[assessmentId]` reloads that same snapshot and order without correct answers. `/test/[assessmentId]` currently displays the snapshot only; answering questions and submission are not implemented.
+Question review is available at `/review/[documentId]`. Its owner-scoped APIs load, save, remove, and confirm questions under `/api/documents/parse/[documentId]`; all edits are validated server-side and saved with optimistic revisions. Confirmed documents lead to test configuration at `/configure/[documentId]`. `POST /api/tests` validates the configuration and creates a server-owned question snapshot; `GET /api/tests/[assessmentId]` reloads that same snapshot and order without correct answers. `/test/[assessmentId]` persists answer changes, supports question navigation and manual submission, and automatically submits timed tests at the server-set deadline.
 
 Allowed timed durations are centralized in `src/application/config/assessment.ts` and currently default to 15, 30, 60, and 90 minutes. Test state expires after two hours in a process-local adapter; restarts or requests routed to a different server instance can make it unavailable. Replace `AssessmentStore` with shared temporary storage before production deployment. Start requests use an owner-scoped request ID for idempotency.
+
+The active test experience persists each selected answer through the owner-scoped `PATCH /api/tests/[assessmentId]` endpoint. `POST /api/tests/[assessmentId]` finalizes an assessment exactly once; timed tests use the server-stored deadline, reject answer changes at or after the deadline, and finalize with answers already saved by the server. The browser countdown is display-only and requests timeout submission. **Answers still pending or offline when the deadline arrives cannot be guaranteed to count**; only server-confirmed saves are included. Repeated submissions return the already-finalized test summary, which includes answered/unanswered counts but no score. A scored results page is planned for a later phase.
 
 ## Architecture
 
@@ -242,6 +243,7 @@ The current tests exercise:
 - Server-side review edit validation, owner isolation, revision conflicts, repeated-save idempotency, expired reviews, and empty-set removal
 - Review edit completeness rules, removal of stale validation issues, and duplicated option text
 - Assessment count and duration validation, unavailable-question rejection, random selection without replacement, stable snapshots, start-request idempotency, state transitions, and omission of answer keys from active-test responses
+- Assessment answer persistence, owner isolation, optimistic update conflicts, deadline-boundary enforcement, manual and timeout finalization, repeated submission idempotency, and editing after submission
 
 Later assessment/session tests should cover:
 
@@ -297,7 +299,7 @@ src/
 - [x] Question validation and correction
 - [x] Test configuration and random selection
 - [x] Stable server-side test snapshots
-- [ ] Assessment interface and timer
+- [x] Assessment interface and server-enforced timer
 - [ ] Server-side scoring and results review
 - [ ] Durable temporary sessions and security hardening
 - [ ] Unit, integration, and end-to-end tests

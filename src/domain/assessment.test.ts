@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import type { AssessmentRecord } from "./assessment";
-import { toActiveAssessment, transitionAssessment } from "./assessment";
+import {
+  moveAssessmentQuestion,
+  toActiveAssessment,
+  transitionAssessment,
+} from "./assessment";
 
 function makeAssessment(): AssessmentRecord {
   return {
@@ -18,15 +22,26 @@ function makeAssessment(): AssessmentRecord {
       options: { A: "A", B: "B", C: "C", D: "D" },
       correctOption: "B",
     }],
+    answers: {},
+    revision: 0,
+    lastMutationId: null,
     status: "in_progress",
     createdAt: 100,
     startedAt: 100,
     deadline: null,
+    submittedAt: null,
     expiresAt: 10_000,
   };
 }
 
 describe("assessment domain", () => {
+  it("navigates adjacent questions without moving beyond the test boundaries", () => {
+    expect(moveAssessmentQuestion(0, 3, -1)).toBe(0);
+    expect(moveAssessmentQuestion(0, 3, 1)).toBe(1);
+    expect(moveAssessmentQuestion(2, 3, 1)).toBe(2);
+    expect(moveAssessmentQuestion(1, 0, -1)).toBe(0);
+  });
+
   it("removes correct answers from the active test representation", () => {
     const active = toActiveAssessment(makeAssessment());
     expect(active.questions[0]).not.toHaveProperty("correctOption");
@@ -39,8 +54,8 @@ describe("assessment domain", () => {
     expect(submitted).toMatchObject({ ok: true, assessment: { status: "submitted" } });
     if (!submitted.ok) throw new Error("Expected a valid submission transition.");
     expect(transitionAssessment(submitted.assessment, "submitted", 300)).toMatchObject({
-      ok: false,
-      reason: "already_submitted",
+      ok: true,
+      idempotent: true,
     });
     expect(transitionAssessment(assessment, "in_progress", 200)).toMatchObject({
       ok: false,
