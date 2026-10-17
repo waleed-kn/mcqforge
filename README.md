@@ -6,7 +6,7 @@ MCQForge is a document-based MCQ practice and assessment platform designed to tu
 
 Built with a focus on software reliability, performance, accessibility, and a distinctive brutalist editorial interface.
 
-> **Development status:** The App Router foundation, document validation and extraction, and question review/correction are implemented. Test configuration, assessments, durable temporary sessions, and results are not implemented yet.
+> **Development status:** The App Router foundation, document extraction, question review, and server-side test configuration/question selection are implemented. The interactive test-taking flow, scoring, durable temporary sessions, and results are not implemented yet.
 
 ## Overview
 
@@ -33,12 +33,13 @@ Implemented in this phase:
 - **Question extraction:** Recognize common numbered question boundaries, A–D option labels, inline answer lines, and separate answer-key references.
 - **Extraction validation:** Mark questions needing review for missing/duplicate options, missing or invalid keys, multiple answers, or ambiguous numbering/boundaries.
 - **Upload feedback:** Display processing errors and detected, valid, and review-required question counts.
+- **Question review:** Edit, validate, save, cancel, search, filter, and remove extracted questions before testing; only complete questions can proceed.
+- **Test configuration:** Select 1–100 available valid questions, choose timed or untimed mode, and select a duration for timed tests.
+- **Stable test creation:** Randomly select questions without replacement, record an immutable in-progress snapshot and server timestamps, and keep correct answers out of active-test responses.
 
 Still planned for Version 1:
 
-- **Randomized assessments:** Select questions without replacement, with a maximum of 100 questions per test.
-- **Flexible timing:** Choose timed or untimed mode; select a permitted duration before starting a timed test.
-- **Answer navigation:** Move between questions and update answers before submission.
+- **Interactive assessment:** Move between questions and update answers before submission.
 - **Automatic submission:** Enforce the deadline on the server for timed assessments.
 - **Automatic scoring:** Calculate correct, incorrect, and unanswered counts.
 - **Detailed results:** Display the final score, percentage, and question-by-question answer review.
@@ -53,8 +54,8 @@ Still planned for Version 1:
 - The initial question model supports four options (A–D) and one correct answer per question.
 - Extraction quality depends on the structure and readability of the uploaded document.
 - Extraction is intentionally conservative and favors numbered questions with clearly labeled option lines. Unnumbered or heavily laid-out questions may be reported as unrecognized or need manual review.
-- The upload endpoint returns extracted answers only as part of the pre-test review response. There is not yet an assessment flow that isolates answer keys from a test-taking client.
-- Upload parsing and review data are held in memory and are not persisted. Review data is owned by an HttpOnly session cookie and expires after two hours, but a server restart or a request routed to a different server instance will make it unavailable. This process-local adapter is for local development only, not reliable production storage; replace it through `DocumentReviewStore` when durable session storage is implemented.
+- The review endpoint returns extracted answers only during the pre-test review stage. Test creation and reload return question snapshots without correct answers, but the interactive test-taking flow and scoring are not implemented.
+- Upload parsing, review data, and test snapshots are held in memory and are not persisted. They are owned by an HttpOnly session cookie and expire after two hours, but a server restart or a request routed to a different server instance will make them unavailable. These process-local adapters are for local development only, not reliable production storage; replace them through `DocumentReviewStore` and `AssessmentStore` when shared temporary storage is implemented.
 - The default maximum file size is 4 MiB; processing also limits PDFs to 300 pages, extracted text to 1,000,000 characters, expanded DOCX content to 20 MiB, and a review set to 1,000 questions.
 - AI-generated questions, AI explanations, permanent test history, and user accounts are outside the initial scope.
 
@@ -69,7 +70,7 @@ Still planned for Version 1:
 | PDF extraction | `pdfjs-dist` |
 | DOCX extraction | Mammoth |
 | Plain-text extraction | Native JavaScript |
-| Temporary storage | Upstash Redis |
+| Temporary storage | Process-local development adapter; Upstash Redis planned |
 | Unit testing | Vitest |
 | Browser testing | Playwright |
 | Continuous integration | GitHub Actions |
@@ -77,7 +78,9 @@ Still planned for Version 1:
 
 The application uses Next.js Route Handlers for its backend API, with parsing, assessment, scoring, validation, and session management separated into focused modules.
 
-Question review is available at `/review/[documentId]`. Its owner-scoped APIs load, save, remove, and confirm questions under `/api/documents/parse/[documentId]`; all edits are validated server-side and saved with optimistic revisions. Confirmation currently leads to an informational configuration handoff, not a working assessment.
+Question review is available at `/review/[documentId]`. Its owner-scoped APIs load, save, remove, and confirm questions under `/api/documents/parse/[documentId]`; all edits are validated server-side and saved with optimistic revisions. Confirmed documents lead to test configuration at `/configure/[documentId]`. `POST /api/tests` validates the configuration and creates a server-owned question snapshot; `GET /api/tests/[assessmentId]` reloads that same snapshot and order without correct answers. `/test/[assessmentId]` currently displays the snapshot only; answering questions and submission are not implemented.
+
+Allowed timed durations are centralized in `src/application/config/assessment.ts` and currently default to 15, 30, 60, and 90 minutes. Test state expires after two hours in a process-local adapter; restarts or requests routed to a different server instance can make it unavailable. Replace `AssessmentStore` with shared temporary storage before production deployment. Start requests use an owner-scoped request ID for idempotency.
 
 ## Architecture
 
@@ -108,7 +111,7 @@ Next.js App Router
          +-- Temporary results
 ```
 
-The server validates and parses documents, then stores the authoritative review questions behind an owner-scoped review-store interface. Review edits and confirmation are Zod-validated on the server and use optimistic revisions with idempotency keys. Once assessment APIs are implemented, correct answers must remain server-side until a test is finalized; the current review response exposes them only in the pre-test review stage.
+The server validates and parses documents, then stores the authoritative review questions behind an owner-scoped review-store interface. Review edits and confirmation are Zod-validated on the server and use optimistic revisions with idempotency keys. The assessment API snapshots the selected questions server-side; correct answers are excluded from active-test DTOs and remain in the temporary server-side snapshot for later scoring.
 
 ## Scoring rules
 
@@ -238,6 +241,7 @@ The current tests exercise:
 - Upload endpoint success and actionable validation errors
 - Server-side review edit validation, owner isolation, revision conflicts, repeated-save idempotency, expired reviews, and empty-set removal
 - Review edit completeness rules, removal of stale validation issues, and duplicated option text
+- Assessment count and duration validation, unavailable-question rejection, random selection without replacement, stable snapshots, start-request idempotency, state transitions, and omission of answer keys from active-test responses
 
 Later assessment/session tests should cover:
 
@@ -262,15 +266,20 @@ The implementation is organized around responsibilities. The current structure i
 ```text
 src/
 ├── app/
-│   ├── api/documents/parse/
+│   ├── api/
+│   │   ├── documents/parse/
+│   │   └── tests/
 │   ├── configure/
-│   └── review/
+│   ├── review/
+│   ├── test/
+│   ├── globals.css
+│   └── page.tsx
 │   ├── globals.css
 │   └── page.tsx
 ├── application/
 │   ├── config/
+│   ├── ports/
 │   └── services/
-├── application/ports/
 ├── components/
 │   ├── ui/
 │   └── upload/
@@ -286,7 +295,8 @@ src/
 - [x] Project foundation and brutalist design system
 - [x] PDF, DOCX, and TXT parsing
 - [x] Question validation and correction
-- [ ] Test configuration and random selection
+- [x] Test configuration and random selection
+- [x] Stable server-side test snapshots
 - [ ] Assessment interface and timer
 - [ ] Server-side scoring and results review
 - [ ] Durable temporary sessions and security hardening
