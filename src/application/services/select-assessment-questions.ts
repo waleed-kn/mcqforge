@@ -3,11 +3,11 @@ import type { MultipleChoiceQuestion } from "@/domain/question";
 
 export type RandomIndex = (upperBoundExclusive: number) => number;
 
-export function selectAssessmentQuestions(
-  questions: readonly MultipleChoiceQuestion[],
+export function selectAssessmentQuestions<T extends MultipleChoiceQuestion>(
+  questions: readonly T[],
   count: number,
   randomIndex: RandomIndex = (upperBound) => randomInt(upperBound),
-): MultipleChoiceQuestion[] {
+): T[] {
   if (!Number.isInteger(count) || count < 1) {
     throw new RangeError("Question count must be a positive integer.");
   }

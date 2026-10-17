@@ -137,6 +137,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   return NextResponse.json(
     {
       assessment: toActiveAssessment(result.assessment),
+      result: result.assessment.result,
       summary: result.summary,
       idempotent: result.idempotent,
     },

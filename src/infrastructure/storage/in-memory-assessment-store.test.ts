@@ -27,6 +27,7 @@ function makeAssessment(overrides: Partial<AssessmentRecord> = {}): AssessmentRe
     startedAt,
     deadline: startedAt + 900_000,
     submittedAt: null,
+    result: null,
     expiresAt: Date.now() + 60_000,
     ...overrides,
   };

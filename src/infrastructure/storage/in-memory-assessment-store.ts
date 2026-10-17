@@ -46,7 +46,7 @@ export class InMemoryAssessmentStore implements AssessmentStore {
       assessment.deadline !== null &&
       Date.now() >= assessment.deadline
     ) {
-      assessment = finalizeAssessment(assessment, Date.now());
+      assessment = finalizeAssessment(assessment, Date.now(), true);
       this.assessments.set(assessmentId, assessment);
     }
     return assessment;
@@ -74,7 +74,7 @@ export class InMemoryAssessmentStore implements AssessmentStore {
       };
     }
     if (assessment.deadline !== null && now >= assessment.deadline) {
-      const submitted = finalizeAssessment(assessment, now);
+      const submitted = finalizeAssessment(assessment, now, true);
       this.assessments.set(assessmentId, submitted);
       return {
         status: "submitted",
@@ -111,7 +111,11 @@ export class InMemoryAssessmentStore implements AssessmentStore {
     const assessment = this.assessments.get(assessmentId);
     if (!assessment || assessment.ownerId !== ownerId) return { status: "not_found" };
     const idempotent = assessment.status === "submitted";
-    const submitted = idempotent ? assessment : finalizeAssessment(assessment, now);
+    const timedOut =
+      assessment.deadline !== null && now >= assessment.deadline;
+    const submitted = idempotent
+      ? assessment
+      : finalizeAssessment(assessment, now, timedOut);
     if (!idempotent) this.assessments.set(assessmentId, submitted);
     return {
       status: "submitted",

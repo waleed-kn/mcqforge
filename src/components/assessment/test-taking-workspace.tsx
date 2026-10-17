@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ActiveAssessment, SubmissionSummary } from "@/domain/assessment";
 import { moveAssessmentQuestion } from "@/domain/assessment";
@@ -8,6 +9,7 @@ import type { AnswerOptionId } from "@/domain/question";
 import { Button } from "@/components/ui/button";
 import { ErrorMessage } from "@/components/ui/error-message";
 import {
+  assessmentResultSchema,
   assessmentErrorResponseSchema,
   assessmentMutationResponseSchema,
 } from "@/validation/assessment";
@@ -39,6 +41,7 @@ function formatRemaining(milliseconds: number) {
 export function TestTakingWorkspace({
   initialAssessment,
 }: TestTakingWorkspaceProps) {
+  const router = useRouter();
   const [assessment, setAssessment] = useState(initialAssessment);
   const assessmentRef = useRef(initialAssessment);
   const [answers, setAnswers] = useState(initialAssessment.answers);
@@ -84,8 +87,9 @@ export function TestTakingWorkspace({
       setSubmission(summary);
       setConfirmOpen(false);
       setSubmitting(false);
+      router.push(`/results/${next.id}`);
     },
-    [updateAssessment],
+    [router, updateAssessment],
   );
 
   const drainAnswerQueue = useCallback(async () => {
@@ -211,8 +215,13 @@ export function TestTakingWorkspace({
           return;
         }
         const result = assessmentMutationResponseSchema.safeParse(body);
-        if (!result.success || !result.data.summary) {
+        if (!result.success || !result.data.summary || !result.data.result) {
           setError("The server returned an invalid submission response.");
+          setSubmitting(false);
+          return;
+        }
+        if (!assessmentResultSchema.safeParse(result.data.result).success) {
+          setError("The server returned an invalid final result.");
           setSubmitting(false);
           return;
         }

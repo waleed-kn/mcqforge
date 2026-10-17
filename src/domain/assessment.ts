@@ -1,4 +1,5 @@
 import type { AnswerOptionId, MultipleChoiceQuestion } from "@/domain/question";
+import { scoreAssessment } from "@/domain/assessment-scoring";
 
 export type AssessmentMode = "timed" | "untimed";
 export type AssessmentStatus = "in_progress" | "submitted";
@@ -9,6 +10,30 @@ export type AssessmentConfiguration = {
   durationMinutes?: number;
 };
 
+export type AssessmentResultQuestion = {
+  questionId: string;
+  sourceNumber: string | null;
+  sourcePageNumbers: number[];
+  prompt: string;
+  options: Record<AnswerOptionId, string>;
+  userAnswer: AnswerOptionId | null;
+  correctAnswer: AnswerOptionId;
+  outcome: "correct" | "incorrect" | "unanswered";
+};
+
+export type AssessmentResult = {
+  assessmentId: string;
+  totalQuestions: number;
+  correct: number;
+  incorrect: number;
+  unanswered: number;
+  percentage: number;
+  roundingPolicy: "nearest_integer";
+  timedOut: boolean;
+  submittedAt: number;
+  questions: AssessmentResultQuestion[];
+};
+
 export type AssessmentQuestionSnapshot = Pick<
   MultipleChoiceQuestion,
   | "id"
@@ -16,8 +41,9 @@ export type AssessmentQuestionSnapshot = Pick<
   | "sourcePageNumbers"
   | "prompt"
   | "options"
-  | "correctOption"
->;
+> & {
+  correctOption: AnswerOptionId;
+};
 
 export type AssessmentRecord = {
   id: string;
@@ -34,6 +60,7 @@ export type AssessmentRecord = {
   startedAt: number;
   deadline: number | null;
   submittedAt: number | null;
+  result: AssessmentResult | null;
   expiresAt: number;
 };
 
@@ -47,7 +74,7 @@ export type ActiveAssessmentQuestion = {
 
 export type ActiveAssessment = Omit<
   AssessmentRecord,
-  "ownerId" | "requestId" | "questions" | "lastMutationId"
+  "ownerId" | "requestId" | "questions" | "lastMutationId" | "result"
 > & {
   questions: ActiveAssessmentQuestion[];
 };
@@ -85,13 +112,11 @@ export function transitionAssessment(
   }
   return {
     ok: true,
-    assessment: {
-      ...assessment,
-      status: "submitted",
+    assessment: finalizeAssessment(
+      assessment,
       submittedAt,
-      revision: assessment.revision + 1,
-      lastMutationId: null,
-    },
+      assessment.deadline !== null && submittedAt >= assessment.deadline,
+    ),
     idempotent: false,
   };
 }
@@ -99,14 +124,23 @@ export function transitionAssessment(
 export function finalizeAssessment(
   assessment: AssessmentRecord,
   submittedAt: number,
+  timedOut = false,
 ): AssessmentRecord {
   if (assessment.status === "submitted") return assessment;
-  return {
+  if (assessment.result) {
+    throw new Error("An in-progress assessment cannot already have a result.");
+  }
+  const finalized: AssessmentRecord = {
     ...assessment,
     status: "submitted",
     submittedAt,
     revision: assessment.revision + 1,
     lastMutationId: null,
+    result: null,
+  };
+  return {
+    ...finalized,
+    result: scoreAssessment(finalized, timedOut),
   };
 }
 

@@ -5,6 +5,7 @@ import { createAssessmentRecord } from "@/application/services/create-assessment
 import { getAssessmentStore } from "@/infrastructure/storage/assessment-store";
 import { activeAssessmentSchema } from "@/validation/assessment";
 import { GET, PATCH, POST } from "./route";
+import { GET as GET_RESULT } from "./result/route";
 
 function createRequest(
   assessmentId: string,
@@ -126,12 +127,23 @@ describe("assessment mutation API", () => {
     expect(answer.status).toBe(200);
 
     const first = await POST(
-      createRequest(assessment.id, ownerId, "POST", {}),
+      createRequest(assessment.id, ownerId, "POST", {
+        score: 100,
+        correctAnswers: 1,
+        correctOption: "D",
+      }),
       context(assessment.id),
     );
     const firstBody = await first.json();
     expect(first.status).toBe(201);
     expect(firstBody.summary).toMatchObject({ answered: 1, unanswered: 0 });
+    expect(firstBody.result).toMatchObject({
+      correct: 0,
+      incorrect: 1,
+      unanswered: 0,
+      percentage: 0,
+      questions: [{ userAnswer: "D", correctAnswer: "B", outcome: "incorrect" }],
+    });
     const repeated = await POST(
       createRequest(assessment.id, ownerId, "POST", {}),
       context(assessment.id),
@@ -140,6 +152,16 @@ describe("assessment mutation API", () => {
     expect(repeated.status).toBe(200);
     expect(repeatedBody.idempotent).toBe(true);
     expect(repeatedBody.summary).toEqual(firstBody.summary);
+    expect(repeatedBody.result).toEqual(firstBody.result);
+
+    const submittedTestReload = await GET(
+      createRequest(assessment.id, ownerId, "GET"),
+      context(assessment.id),
+    );
+    const submittedTestBody = await submittedTestReload.json();
+    expect(submittedTestBody.assessment.status).toBe("submitted");
+    expect(submittedTestBody).not.toHaveProperty("result");
+    expect(submittedTestBody.assessment.questions[0]).not.toHaveProperty("correctOption");
 
     const afterSubmit = await PATCH(
       createRequest(assessment.id, ownerId, "PATCH", {
@@ -167,5 +189,44 @@ describe("assessment mutation API", () => {
       timedOut: true,
     });
     expect(body.assessment.status).toBe("submitted");
+    expect(body.result).toMatchObject({
+      correct: 0,
+      unanswered: 1,
+      timedOut: true,
+    });
+  });
+
+  it("protects results until submission and enforces ownership", async () => {
+    const { ownerId, assessment } = await createRecord();
+    const activeResult = await GET_RESULT(
+      createRequest(assessment.id, ownerId, "GET"),
+      context(assessment.id),
+    );
+    expect(activeResult.status).toBe(409);
+
+    await POST(
+      createRequest(assessment.id, ownerId, "POST", {}),
+      context(assessment.id),
+    );
+    const resultResponse = await GET_RESULT(
+      createRequest(assessment.id, ownerId, "GET"),
+      context(assessment.id),
+    );
+    expect(resultResponse.status).toBe(200);
+    expect((await resultResponse.json()).result.totalQuestions).toBe(1);
+
+    const unauthorized = await GET_RESULT(
+      createRequest(assessment.id, randomUUID(), "GET"),
+      context(assessment.id),
+    );
+    expect(unauthorized.status).toBe(410);
+  });
+
+  it("returns 410 for invalid or expired assessment identifiers", async () => {
+    const response = await GET_RESULT(
+      createRequest(randomUUID(), randomUUID(), "GET"),
+      context(randomUUID()),
+    );
+    expect(response.status).toBe(410);
   });
 });

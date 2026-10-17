@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { reviewSessionCookieName } from "@/application/config/document-review";
 import { getReviewOwnerFromCookie } from "@/application/services/review-session";
@@ -20,6 +21,10 @@ async function TestContent({ params }: TestPageProps) {
   const record = ownerId
     ? await getAssessmentStore().getOwned(assessmentId, ownerId)
     : null;
+
+  if (record?.status === "submitted" && record.result) {
+    redirect(`/results/${assessmentId}`);
+  }
 
   if (!record) {
     return (

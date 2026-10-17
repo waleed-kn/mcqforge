@@ -6,7 +6,7 @@ MCQForge is a document-based MCQ practice and assessment platform designed to tu
 
 Built with a focus on software reliability, performance, accessibility, and a distinctive brutalist editorial interface.
 
-> **Development status:** The App Router foundation, document extraction, question review, test configuration, and server-enforced assessment engine with answer persistence are implemented. Scoring, durable temporary sessions, and results are not implemented yet.
+> **Development status:** The App Router foundation, document extraction, question review, test configuration, server-enforced assessment engine, authoritative scoring, and owner-protected results review are implemented. Temporary session storage is still process-local.
 
 ## Overview
 
@@ -37,15 +37,11 @@ Implemented in this phase:
 - **Test configuration:** Select 1–100 available valid questions, choose timed or untimed mode, and select a duration for timed tests.
 - **Stable test creation:** Randomly select questions without replacement, record an immutable in-progress snapshot and server timestamps, and keep correct answers out of active-test responses.
 - **Assessment engine:** Navigate questions, persist answer updates, enforce server-side deadlines, and finalize tests manually or automatically on timeout.
-
-Still planned for Version 1:
-
-- **Automatic scoring:** Calculate correct, incorrect, and unanswered counts.
-- **Detailed results:** Display the final score, percentage, and question-by-question answer review.
+- **Authoritative scoring and results:** Score saved answers on the server and provide an owner-protected question-by-question review after submission.
 - **Anonymous usage:** No registration or login required.
 - **Temporary data:** Review data currently expires after two hours in a process-local development adapter; durable session storage is still planned.
 - **Brutalist interface:** High-contrast colors, bold typography, hard edges, and responsive layouts.
-- **Testing and CI:** Automated checks for core logic, API behavior, and important user workflows.
+- **Testing:** Automated checks for core logic and API behavior; browser-level end-to-end coverage remains future work.
 
 ### Version 1 limitations
 
@@ -53,7 +49,7 @@ Still planned for Version 1:
 - The initial question model supports four options (A–D) and one correct answer per question.
 - Extraction quality depends on the structure and readability of the uploaded document.
 - Extraction is intentionally conservative and favors numbered questions with clearly labeled option lines. Unnumbered or heavily laid-out questions may be reported as unrecognized or need manual review.
-- The review endpoint returns extracted answers only during the pre-test review stage. Test creation and reload return question snapshots without correct answers; the interactive test workflow is implemented, but scoring is not.
+- The review endpoint returns extracted answers during the pre-test review stage. Test creation and reload return question snapshots without correct answers. Scores and answer keys are exposed only after an owner-authorized submission.
 - Upload parsing, review data, and test snapshots are held in memory and are not persisted. They are owned by an HttpOnly session cookie and expire after two hours, but a server restart or a request routed to a different server instance will make them unavailable. These process-local adapters are for local development only, not reliable production storage; replace them through `DocumentReviewStore` and `AssessmentStore` when shared temporary storage is implemented.
 - The default maximum file size is 4 MiB; processing also limits PDFs to 300 pages, extracted text to 1,000,000 characters, expanded DOCX content to 20 MiB, and a review set to 1,000 questions.
 - AI-generated questions, AI explanations, permanent test history, and user accounts are outside the initial scope.
@@ -81,7 +77,9 @@ Question review is available at `/review/[documentId]`. Its owner-scoped APIs lo
 
 Allowed timed durations are centralized in `src/application/config/assessment.ts` and currently default to 15, 30, 60, and 90 minutes. Test state expires after two hours in a process-local adapter; restarts or requests routed to a different server instance can make it unavailable. Replace `AssessmentStore` with shared temporary storage before production deployment. Start requests use an owner-scoped request ID for idempotency.
 
-The active test experience persists each selected answer through the owner-scoped `PATCH /api/tests/[assessmentId]` endpoint. `POST /api/tests/[assessmentId]` finalizes an assessment exactly once; timed tests use the server-stored deadline, reject answer changes at or after the deadline, and finalize with answers already saved by the server. The browser countdown is display-only and requests timeout submission. **Answers still pending or offline when the deadline arrives cannot be guaranteed to count**; only server-confirmed saves are included. Repeated submissions return the already-finalized test summary, which includes answered/unanswered counts but no score. A scored results page is planned for a later phase.
+The active test experience persists each selected answer through the owner-scoped `PATCH /api/tests/[assessmentId]` endpoint. `POST /api/tests/[assessmentId]` finalizes an assessment exactly once; timed tests use the server-stored deadline, reject answer changes at or after the deadline, and finalize with answers already saved by the server. The browser countdown is display-only and requests timeout submission. **Answers still pending or offline when the deadline arrives cannot be guaranteed to count**; only server-confirmed saves are included. Repeated submissions return the same server-calculated result. `GET /api/tests/[assessmentId]/result` and `/results/[assessmentId]` require the owning session and do not reveal results for an active test.
+
+Scoring awards one point per correct answer and zero points for incorrect or unanswered questions, with every question included in the denominator. Percentage is rounded to the nearest whole percent using JavaScript `Math.round` (exact half-percent ties round up; for example, 1/3 is 33%). The result is calculated from the server-saved answers and immutable question snapshot; client-supplied scores and answer keys are ignored.
 
 ## Architecture
 
@@ -244,8 +242,9 @@ The current tests exercise:
 - Review edit completeness rules, removal of stale validation issues, and duplicated option text
 - Assessment count and duration validation, unavailable-question rejection, random selection without replacement, stable snapshots, start-request idempotency, state transitions, and omission of answer keys from active-test responses
 - Assessment answer persistence, owner isolation, optimistic update conflicts, deadline-boundary enforcement, manual and timeout finalization, repeated submission idempotency, and editing after submission
+- Authoritative scoring, nearest-integer percentage rounding, result ownership and active-test result blocking, and rejection of client-supplied scores
 
-Later assessment/session tests should cover:
+Additional assessment/session tests should cover:
 
 - Parsing of valid and malformed PDF, DOCX, and TXT files
 - Question and answer-key validation
@@ -253,7 +252,6 @@ Later assessment/session tests should cover:
 - Test configuration boundaries
 - Answer persistence and question navigation
 - Manual and timeout submission
-- Scoring and percentage calculations
 - Duplicate submission and concurrent updates
 - Session isolation and expiration
 - Invalid and oversized uploads
@@ -272,6 +270,7 @@ src/
 │   │   ├── documents/parse/
 │   │   └── tests/
 │   ├── configure/
+│   ├── results/
 │   ├── review/
 │   ├── test/
 │   ├── globals.css
@@ -283,9 +282,10 @@ src/
 │   ├── ports/
 │   └── services/
 ├── components/
+│   ├── assessment/
 │   ├── ui/
 │   └── upload/
-├── domain/
+├── domain/                 # includes assessment scoring and result models
 ├── infrastructure/
 │   ├── document-parsers/
 │   └── storage/
@@ -300,9 +300,10 @@ src/
 - [x] Test configuration and random selection
 - [x] Stable server-side test snapshots
 - [x] Assessment interface and server-enforced timer
-- [ ] Server-side scoring and results review
+- [x] Server-side scoring and results review
 - [ ] Durable temporary sessions and security hardening
-- [ ] Unit, integration, and end-to-end tests
+- [x] Unit and API integration coverage for implemented workflows
+- [ ] Browser-level end-to-end coverage
 - [ ] CI pipeline and deployment verification
 
 Update this checklist as features are implemented and verified.

@@ -30,6 +30,7 @@ function makeAssessment(): AssessmentRecord {
     startedAt: 100,
     deadline: null,
     submittedAt: null,
+    result: null,
     expiresAt: 10_000,
   };
 }

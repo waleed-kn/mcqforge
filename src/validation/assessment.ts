@@ -82,8 +82,102 @@ export const answerUpdateSchema = z
   })
   .strict();
 
+export const assessmentResultQuestionSchema = z
+  .object({
+    questionId: z.string().uuid(),
+    sourceNumber: z.string().nullable(),
+    sourcePageNumbers: z.array(z.number().int().positive()),
+    prompt: z.string(),
+    options: z.object({
+      A: z.string(),
+      B: z.string(),
+      C: z.string(),
+      D: z.string(),
+    }),
+    userAnswer: z.enum(["A", "B", "C", "D"]).nullable(),
+    correctAnswer: z.enum(["A", "B", "C", "D"]),
+    outcome: z.enum(["correct", "incorrect", "unanswered"]),
+  })
+  .strict();
+
+export const assessmentResultSchema = z
+  .object({
+    assessmentId: z.string().uuid(),
+    totalQuestions: z.number().int().positive(),
+    correct: z.number().int().nonnegative(),
+    incorrect: z.number().int().nonnegative(),
+    unanswered: z.number().int().nonnegative(),
+    percentage: z.number().min(0).max(100),
+    roundingPolicy: z.literal("nearest_integer"),
+    timedOut: z.boolean(),
+    submittedAt: z.number().int(),
+    questions: z.array(assessmentResultQuestionSchema).min(1),
+  })
+  .strict()
+  .superRefine((result, context) => {
+    if (
+      result.correct + result.incorrect + result.unanswered !==
+      result.totalQuestions
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["totalQuestions"],
+        message: "Result totals must equal the total question count.",
+      });
+    }
+    if (result.questions.length !== result.totalQuestions) {
+      context.addIssue({
+        code: "custom",
+        path: ["questions"],
+        message: "Result review must include every question.",
+      });
+    }
+    const correct = result.questions.filter((question) => question.outcome === "correct").length;
+    const incorrect = result.questions.filter((question) => question.outcome === "incorrect").length;
+    const unanswered = result.questions.filter((question) => question.outcome === "unanswered").length;
+    const questionIds = new Set<string>();
+    if (
+      correct !== result.correct ||
+      incorrect !== result.incorrect ||
+      unanswered !== result.unanswered
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["questions"],
+        message: "Question outcomes must agree with the result totals.",
+      });
+    }
+    for (const [index, question] of result.questions.entries()) {
+      const expectedOutcome =
+        question.userAnswer === null
+          ? "unanswered"
+          : question.userAnswer === question.correctAnswer
+            ? "correct"
+            : "incorrect";
+      if (question.outcome !== expectedOutcome || questionIds.has(question.questionId)) {
+        context.addIssue({
+          code: "custom",
+          path: ["questions", index],
+          message: "Question outcome and ID must match the finalized answer snapshot.",
+        });
+      }
+      questionIds.add(question.questionId);
+    }
+    if (
+      result.percentage !==
+      Math.round((result.correct / result.totalQuestions) * 100)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["percentage"],
+        message: "Percentage must use nearest-whole-percent rounding.",
+      });
+    }
+  });
+
 export const assessmentMutationResponseSchema = z.object({
   assessment: activeAssessmentSchema,
+  result: assessmentResultSchema.optional(),
   idempotent: z.boolean().optional(),
   summary: z.object({
     answered: z.number().int().nonnegative(),
@@ -105,6 +199,10 @@ export const assessmentErrorResponseSchema = z.object({
     submittedAt: z.number().int(),
     timedOut: z.boolean(),
   }).optional(),
+});
+
+export const assessmentResultResponseSchema = z.object({
+  result: assessmentResultSchema,
 });
 
 export type AssessmentConfigurationRequest = z.infer<

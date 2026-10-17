@@ -4,7 +4,7 @@ import {
   assessmentTtlSeconds,
 } from "@/application/config/assessment";
 import type { AssessmentConfiguration, AssessmentRecord } from "@/domain/assessment";
-import type { MultipleChoiceQuestion } from "@/domain/question";
+import type { AnswerOptionId, MultipleChoiceQuestion } from "@/domain/question";
 import { selectAssessmentQuestions } from "@/application/services/select-assessment-questions";
 
 const allowedDurations = new Set<number>(allowedAssessmentDurationsMinutes);
@@ -56,7 +56,9 @@ export function createAssessmentRecord(input: {
   }
 
   const validAvailable = input.availableQuestions.filter(
-    (question) => question.status === "valid" && question.correctOption !== null,
+    (question): question is MultipleChoiceQuestion & {
+      correctOption: AnswerOptionId;
+    } => question.status === "valid" && question.correctOption !== null,
   );
   const availableCount = new Set(validAvailable.map((question) => question.id)).size;
   if (configuration.questionCount > availableCount) {
@@ -107,6 +109,7 @@ export function createAssessmentRecord(input: {
         ? now + (configuration.durationMinutes ?? 0) * 60_000
         : null,
     submittedAt: null,
+    result: null,
     expiresAt: now + assessmentTtlSeconds * 1000,
   };
 }
