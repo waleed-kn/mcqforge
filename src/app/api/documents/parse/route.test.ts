@@ -7,11 +7,23 @@ function createRequest(file?: File) {
   if (file) formData.set("file", file);
   return new NextRequest("http://localhost/api/documents/parse", {
     method: "POST",
+    headers: { origin: "http://localhost" },
     body: formData,
   });
 }
 
 describe("POST /api/documents/parse", () => {
+  it("rejects uploads without a verified same-origin header", async () => {
+    const formData = new FormData();
+    formData.set("file", new File(["Q1: a"], "questions.txt", { type: "text/plain" }));
+    const response = await POST(new NextRequest("http://localhost/api/documents/parse", {
+      method: "POST",
+      body: formData,
+    }));
+    expect(response.status).toBe(403);
+    expect((await response.json()).error.code).toBe("csrf_rejected");
+  });
+
   it("returns parsed TXT questions and review counts", async () => {
     const file = new File(
       [
@@ -34,6 +46,9 @@ describe("POST /api/documents/parse", () => {
     });
     expect(body.documentId).toBeTruthy();
     expect(body.questions).toBeUndefined();
+    const cookie = response.headers.get("set-cookie");
+    expect(cookie).toContain("HttpOnly");
+    expect(cookie).toContain("SameSite=lax");
   });
 
   it("returns actionable validation errors for missing or invalid uploads", async () => {

@@ -7,6 +7,7 @@ import { getDocumentReviewStore } from "@/infrastructure/storage/document-review
 import type { CreateReviewDocumentInput } from "@/application/ports/document-review-store";
 import type { MultipleChoiceQuestion } from "@/domain/question";
 import { activeAssessmentSchema } from "@/validation/assessment";
+import { getSessionStore } from "@/infrastructure/storage/session-store";
 
 function makeQuestion(overrides: Partial<MultipleChoiceQuestion> = {}): MultipleChoiceQuestion {
   return {
@@ -27,6 +28,7 @@ async function createConfirmedDocument(
   ownerId = randomUUID(),
   questions = [makeQuestion()],
 ) {
+  await getSessionStore().create(ownerId, Date.now());
   const input: CreateReviewDocumentInput = {
     ownerId,
     metadata: {
@@ -52,6 +54,7 @@ function jsonRequest(ownerId: string, body: unknown) {
     headers: {
       cookie: `mcqforge_session=${ownerId}`,
       "content-type": "application/json",
+      origin: "http://localhost",
     },
     body: JSON.stringify(body),
   });
@@ -145,15 +148,34 @@ describe("assessment API", () => {
     expect(repeatedBody.assessment.id).toBe(firstBody.assessment.id);
 
     const unauthorized = await startAssessment(jsonRequest(randomUUID(), request));
-    expect(unauthorized.status).toBe(410);
+    expect(unauthorized.status).toBe(401);
+    const otherSessionId = randomUUID();
+    await getSessionStore().create(otherSessionId, Date.now());
     const activeRequest = new NextRequest(
       `http://localhost/api/tests/${firstBody.assessment.id}`,
-      { headers: { cookie: `mcqforge_session=${randomUUID()}` } },
+      { headers: { cookie: `mcqforge_session=${otherSessionId}` } },
     );
     const unauthorizedRead = await getAssessment(
       activeRequest,
       testContext(firstBody.assessment.id),
     );
     expect(unauthorizedRead.status).toBe(410);
+  });
+
+  it("enforces the configured per-session test creation limit", async () => {
+    const ownerId = randomUUID();
+    const document = await createConfirmedDocument(ownerId);
+    const responses = await Promise.all(
+      Array.from({ length: 11 }, () =>
+        startAssessment(jsonRequest(ownerId, {
+          documentId: document.metadata.id,
+          requestId: randomUUID(),
+          questionCount: 1,
+          mode: "untimed",
+        })),
+      ),
+    );
+    expect(responses.filter((response) => response.status === 429)).toHaveLength(1);
+    expect(responses.filter((response) => response.status === 201)).toHaveLength(10);
   });
 });

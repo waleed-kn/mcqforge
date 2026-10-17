@@ -3,8 +3,10 @@ import type {
   DocumentReviewStore,
   ReviewMutationResult,
 } from "@/application/ports/document-review-store";
+import type { SessionStore } from "@/application/ports/session-store";
 import { applyQuestionEdits } from "@/application/services/review-question";
 import type { ReviewDocument } from "@/domain/review-document";
+import { StorageUnavailableError } from "@/infrastructure/storage/storage-error";
 
 type StoredReviewDocument = ReviewDocument & {
   ownerId: string;
@@ -14,7 +16,12 @@ type StoredReviewDocument = ReviewDocument & {
 export class InMemoryDocumentReviewStore implements DocumentReviewStore {
   private readonly documents = new Map<string, StoredReviewDocument>();
 
+  constructor(private readonly sessions?: SessionStore) {}
+
   async create(input: CreateReviewDocumentInput): Promise<ReviewDocument> {
+    if (this.sessions && !(await this.sessions.get(input.ownerId, Date.now()))) {
+      throw new StorageUnavailableError();
+    }
     this.pruneExpired();
     const document: StoredReviewDocument = {
       metadata: input.metadata,
@@ -35,6 +42,7 @@ export class InMemoryDocumentReviewStore implements DocumentReviewStore {
     ownerId: string,
   ): Promise<ReviewDocument | null> {
     this.pruneExpired();
+    if (this.sessions && !(await this.sessions.get(ownerId, Date.now()))) return null;
     const document = this.documents.get(documentId);
     if (!document || document.ownerId !== ownerId) return null;
     return this.toPublicDocument(document);
@@ -115,6 +123,9 @@ export class InMemoryDocumentReviewStore implements DocumentReviewStore {
     ) => Omit<StoredReviewDocument, "revision" | "lastMutationId"> | null,
   ): Promise<ReviewMutationResult> {
     this.pruneExpired();
+    if (this.sessions && !(await this.sessions.get(ownerId, Date.now()))) {
+      return { status: "missing" };
+    }
     const current = this.documents.get(documentId);
     if (!current || current.ownerId !== ownerId) return { status: "missing" };
 

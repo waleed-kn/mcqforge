@@ -1,26 +1,31 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { reviewSessionCookieName } from "@/application/config/document-review";
-import { getReviewOwnerFromCookie } from "@/application/services/review-session";
+import { getAuthenticatedSession } from "@/application/services/review-session";
 import { getAssessmentStore } from "@/infrastructure/storage/assessment-store";
 import { assessmentResultSchema } from "@/validation/assessment";
+import { withStorageErrorHandling } from "@/application/services/api-security";
+import { resourceIdSchema } from "@/validation/identifiers";
 
 type RouteContext = {
   params: Promise<{ assessmentId: string }>;
 };
 
-export async function GET(request: NextRequest, context: RouteContext) {
+export const GET = withStorageErrorHandling(async function GET(request: NextRequest, context: RouteContext) {
   const { assessmentId } = await context.params;
-  const ownerId = getReviewOwnerFromCookie(
-    request.cookies.get(reviewSessionCookieName)?.value,
-  );
-  if (!ownerId) {
+  if (!resourceIdSchema.safeParse(assessmentId).success) {
+    return NextResponse.json(
+      { error: { code: "invalid_test_id", message: "The test ID is invalid." } },
+      { status: 400 },
+    );
+  }
+  const session = await getAuthenticatedSession(request);
+  if (!session) {
     return NextResponse.json(
       { error: { code: "session_unavailable", message: "Your test session is unavailable." } },
       { status: 401 },
     );
   }
 
-  const assessment = await getAssessmentStore().getOwned(assessmentId, ownerId);
+  const assessment = await getAssessmentStore().getOwned(assessmentId, session.id);
   if (!assessment) {
     return NextResponse.json(
       { error: { code: "test_unavailable", message: "This result is unavailable or has expired." } },
@@ -41,4 +46,4 @@ export async function GET(request: NextRequest, context: RouteContext) {
     );
   }
   return NextResponse.json({ result: result.data });
-}
+});

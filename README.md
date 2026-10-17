@@ -6,7 +6,7 @@ MCQForge is a document-based MCQ practice and assessment platform designed to tu
 
 Built with a focus on software reliability, performance, accessibility, and a distinctive brutalist editorial interface.
 
-> **Development status:** The App Router foundation, document extraction, question review, test configuration, server-enforced assessment engine, authoritative scoring, and owner-protected results review are implemented. Temporary session storage is still process-local.
+> **Development status:** The App Router foundation, document extraction, question review, test configuration, server-enforced assessment engine, authoritative scoring, protected temporary sessions, and Upstash Redis storage adapters are implemented. Local in-memory mode is explicit and development-only.
 
 ## Overview
 
@@ -39,7 +39,7 @@ Implemented in this phase:
 - **Assessment engine:** Navigate questions, persist answer updates, enforce server-side deadlines, and finalize tests manually or automatically on timeout.
 - **Authoritative scoring and results:** Score saved answers on the server and provide an owner-protected question-by-question review after submission.
 - **Anonymous usage:** No registration or login required.
-- **Temporary data:** Review data currently expires after two hours in a process-local development adapter; durable session storage is still planned.
+- **Temporary data:** Anonymous session state uses Upstash Redis in production; local development can opt into a process-local adapter.
 - **Brutalist interface:** High-contrast colors, bold typography, hard edges, and responsive layouts.
 - **Testing:** Automated checks for core logic and API behavior; browser-level end-to-end coverage remains future work.
 
@@ -50,7 +50,7 @@ Implemented in this phase:
 - Extraction quality depends on the structure and readability of the uploaded document.
 - Extraction is intentionally conservative and favors numbered questions with clearly labeled option lines. Unnumbered or heavily laid-out questions may be reported as unrecognized or need manual review.
 - The review endpoint returns extracted answers during the pre-test review stage. Test creation and reload return question snapshots without correct answers. Scores and answer keys are exposed only after an owner-authorized submission.
-- Upload parsing, review data, and test snapshots are held in memory and are not persisted. They are owned by an HttpOnly session cookie and expire after two hours, but a server restart or a request routed to a different server instance will make them unavailable. These process-local adapters are for local development only, not reliable production storage; replace them through `DocumentReviewStore` and `AssessmentStore` when shared temporary storage is implemented.
+- Temporary session, document, and assessment records expire after two hours of inactivity and have a 24-hour hard maximum lifetime by default. Redis records are versioned and size-limited. Local `memory` mode is non-durable and disabled in production.
 - The default maximum file size is 4 MiB; processing also limits PDFs to 300 pages, extracted text to 1,000,000 characters, expanded DOCX content to 20 MiB, and a review set to 1,000 questions.
 - AI-generated questions, AI explanations, permanent test history, and user accounts are outside the initial scope.
 
@@ -65,7 +65,7 @@ Implemented in this phase:
 | PDF extraction | `pdfjs-dist` |
 | DOCX extraction | Mammoth |
 | Plain-text extraction | Native JavaScript |
-| Temporary storage | Process-local development adapter; Upstash Redis planned |
+| Temporary storage | Upstash Redis in production; explicit process-local development adapter |
 | Unit testing | Vitest |
 | Browser testing | Playwright |
 | Continuous integration | GitHub Actions |
@@ -75,7 +75,7 @@ The application uses Next.js Route Handlers for its backend API, with parsing, a
 
 Question review is available at `/review/[documentId]`. Its owner-scoped APIs load, save, remove, and confirm questions under `/api/documents/parse/[documentId]`; all edits are validated server-side and saved with optimistic revisions. Confirmed documents lead to test configuration at `/configure/[documentId]`. `POST /api/tests` validates the configuration and creates a server-owned question snapshot; `GET /api/tests/[assessmentId]` reloads that same snapshot and order without correct answers. `/test/[assessmentId]` persists answer changes, supports question navigation and manual submission, and automatically submits timed tests at the server-set deadline.
 
-Allowed timed durations are centralized in `src/application/config/assessment.ts` and currently default to 15, 30, 60, and 90 minutes. Test state expires after two hours in a process-local adapter; restarts or requests routed to a different server instance can make it unavailable. Replace `AssessmentStore` with shared temporary storage before production deployment. Start requests use an owner-scoped request ID for idempotency.
+Allowed timed durations are centralized in `src/application/config/assessment.ts` and currently default to 15, 30, 60, and 90 minutes. Start requests use an owner-scoped request ID for idempotency. Production documents, tests, sessions, and results are stored in shared Upstash Redis and use two-hour inactivity expiration bounded by a 24-hour hard lifetime.
 
 The active test experience persists each selected answer through the owner-scoped `PATCH /api/tests/[assessmentId]` endpoint. `POST /api/tests/[assessmentId]` finalizes an assessment exactly once; timed tests use the server-stored deadline, reject answer changes at or after the deadline, and finalize with answers already saved by the server. The browser countdown is display-only and requests timeout submission. **Answers still pending or offline when the deadline arrives cannot be guaranteed to count**; only server-confirmed saves are included. Repeated submissions return the same server-calculated result. `GET /api/tests/[assessmentId]/result` and `/results/[assessmentId]` require the owning session and do not reveal results for an active test.
 
@@ -198,18 +198,23 @@ MAX_DOCUMENT_UPLOAD_BYTES=4194304
 
 The value must be an integer from 1,024 bytes through 52,428,800 bytes (50 MiB). If unset, the endpoint defaults to 4 MiB. Keep the value within the hosting platform's request-body limit. For example, Vercel Functions currently have a 4.5 MB request/response payload limit; multipart overhead counts toward that cap, and a platform may reject a request before the route can return its own error. Larger configured uploads may therefore require a host with a higher body limit or direct-to-storage uploads in a later phase.
 
-No Redis credentials are required for the parser or review workflow. Review data currently uses the process-local `InMemoryDocumentReviewStore`; it is intentionally not a production persistence fallback. When durable temporary storage is implemented, its server-only configuration may include:
+Copy `.env.example` to `.env.local` for local development. It opts into process-local memory explicitly; this data is lost on restart and is not appropriate for production. For shared storage set `MCQFORGE_STORAGE_DRIVER=redis` and configure server-only Upstash credentials:
 
 ```dotenv
-UPSTASH_REDIS_REST_URL=
-UPSTASH_REDIS_REST_TOKEN=
+UPSTASH_REDIS_REST_URL=https://your-database.upstash.io
+UPSTASH_REDIS_REST_TOKEN=replace-with-a-server-side-token
+APP_ORIGIN=http://localhost:3000
 ```
 
-These Redis values are not read by the current code. Never put real credentials in source code or public environment variables.
+In production, `MCQFORGE_STORAGE_DRIVER=redis`, both Redis credentials, and `APP_ORIGIN` are required. Storage is resolved lazily at request time. Missing credentials, invalid configuration, or Redis failures return a controlled service-unavailable response; the application never falls back to in-memory persistence in production. Do not use `NEXT_PUBLIC_` variables for credentials.
 
 The current PDF parser uses the `pdfjs-dist/legacy/build/pdf.mjs` Node entry point (not its browser viewer or worker bundle). It has been exercised in the Node server runtime used for the production build. It extracts selectable text only; image-only/scanned PDFs fail with an explicit OCR-not-supported message.
 
-The application should fail clearly when required production storage configuration is missing. It must not silently pretend that in-memory storage provides reliable persistence across serverless requests.
+`SESSION_IDLE_TTL_SECONDS` defaults to 7,200 seconds, `SESSION_MAX_LIFETIME_SECONDS` defaults to 86,400 seconds, `MAX_TEMPORARY_RECORD_BYTES` defaults to 2,097,152 bytes, and upload/test-creation limits default to 5/10 requests per minute. Allowed ranges and validation are enforced in `src/application/config/temporary-storage.ts`. Document and test records are children of a server-side session; every access checks that parent session, and child-key TTL is bounded by the refreshed parent expiry and hard lifetime. Results share the test record's expiration policy.
+
+Mutation routes reject missing, malformed, or cross-site `Origin` headers and reject browser `Sec-Fetch-Site: cross-site` requests. Production deployments must configure the exact public origin in `APP_ORIGIN`. The upload rate limiter uses the proxy-provided client-address header before a session exists; configure the hosting proxy to overwrite/strip client-supplied `X-Forwarded-For`. Requests are rate-limited atomically in Redis. Redis Lua compare-and-set operations serialize question edits, answer changes, test creation, and finalization; a stale concurrent change is rejected rather than silently overwriting newer state.
+
+Rate limits are per session for test creation and per client address (or existing session) for uploads. They are a basic abuse-control boundary, not a substitute for edge-level DDoS controls. Redis TTL is an expiration mechanism, not a guarantee of immediate erasure from provider backups or infrastructure logs. No uploaded original file is stored after extraction; parsed question text is temporary session data.
 
 ## Reliability and security
 
@@ -223,6 +228,8 @@ The project is designed around the following engineering principles:
 - Calculate scores on the server.
 - Enforce timer deadlines independently of the browser countdown.
 - Prevent unauthorized access to another anonymous session's data.
+- Validate an active server-side session on every document, test, answer, submission, and result operation.
+- Require same-origin mutation requests and apply configurable Redis-backed rate limits to uploads and test creation.
 - Make final submission idempotent.
 - Expire temporary data according to a documented policy.
 - Avoid logging uploaded document contents, answer keys, or session secrets.
@@ -243,6 +250,7 @@ The current tests exercise:
 - Assessment count and duration validation, unavailable-question rejection, random selection without replacement, stable snapshots, start-request idempotency, state transitions, and omission of answer keys from active-test responses
 - Assessment answer persistence, owner isolation, optimistic update conflicts, deadline-boundary enforcement, manual and timeout finalization, repeated submission idempotency, and editing after submission
 - Authoritative scoring, nearest-integer percentage rounding, result ownership and active-test result blocking, and rejection of client-supplied scores
+- Session isolation, inactivity/hard expiration, CSRF origin validation, cookie attributes, rate limits, missing Redis configuration, and controlled Redis failures
 
 Additional assessment/session tests should cover:
 
@@ -301,7 +309,7 @@ src/
 - [x] Stable server-side test snapshots
 - [x] Assessment interface and server-enforced timer
 - [x] Server-side scoring and results review
-- [ ] Durable temporary sessions and security hardening
+- [x] Redis-backed temporary sessions and security hardening
 - [x] Unit and API integration coverage for implemented workflows
 - [ ] Browser-level end-to-end coverage
 - [ ] CI pipeline and deployment verification

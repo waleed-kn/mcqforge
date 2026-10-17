@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@upstash/redis": "^1.39.0",
     "mammoth": "^1.13.0",
     "next": "16.4.0",
     "pdfjs-dist": "^5.4.394",

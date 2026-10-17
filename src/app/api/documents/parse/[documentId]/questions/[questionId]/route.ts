@@ -1,11 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getOrCreateReviewOwner } from "@/application/services/review-session";
+import { getAuthenticatedSession, isSameOriginMutation } from "@/application/services/review-session";
+import { csrfRejectedResponse, withStorageErrorHandling } from "@/application/services/api-security";
 import {
   reviewErrorResponse,
   reviewMutationResponse,
 } from "@/application/services/review-api";
 import { getDocumentReviewStore } from "@/infrastructure/storage/document-review-store";
 import { reviewMutationSchema } from "@/validation/document-review";
+import { resourceIdSchema } from "@/validation/identifiers";
 
 type RouteContext = {
   params: Promise<{ documentId: string; questionId: string }>;
@@ -22,8 +24,15 @@ async function parseMutation(request: NextRequest) {
   }
 }
 
-export async function PATCH(request: NextRequest, context: RouteContext) {
+export const PATCH = withStorageErrorHandling(async function PATCH(request: NextRequest, context: RouteContext) {
+  if (!isSameOriginMutation(request)) return csrfRejectedResponse();
   const { documentId, questionId } = await context.params;
+  if (
+    !resourceIdSchema.safeParse(documentId).success ||
+    !resourceIdSchema.safeParse(questionId).success
+  ) {
+    return reviewErrorResponse("The document or question ID is invalid.", "invalid_resource_id", 400);
+  }
   const mutation = await parseMutation(request);
   if (!mutation.data || !mutation.data.question) {
     return reviewErrorResponse(
@@ -33,10 +42,17 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     );
   }
 
-  const { ownerId } = getOrCreateReviewOwner(request);
+  const session = await getAuthenticatedSession(request);
+  if (!session) {
+    return reviewErrorResponse(
+      "Your temporary session is unavailable or has expired.",
+      "session_unavailable",
+      401,
+    );
+  }
   const result = await getDocumentReviewStore().updateQuestion(
     documentId,
-    ownerId,
+    session.id,
     questionId,
     mutation.data.expectedRevision,
     mutation.data.mutationId,
@@ -62,10 +78,17 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     );
   }
   return reviewMutationResponse(result.document, result.idempotent);
-}
+});
 
-export async function DELETE(request: NextRequest, context: RouteContext) {
+export const DELETE = withStorageErrorHandling(async function DELETE(request: NextRequest, context: RouteContext) {
+  if (!isSameOriginMutation(request)) return csrfRejectedResponse();
   const { documentId, questionId } = await context.params;
+  if (
+    !resourceIdSchema.safeParse(documentId).success ||
+    !resourceIdSchema.safeParse(questionId).success
+  ) {
+    return reviewErrorResponse("The document or question ID is invalid.", "invalid_resource_id", 400);
+  }
   const mutation = await parseMutation(request);
   if (!mutation.data || mutation.data.question) {
     return reviewErrorResponse(
@@ -75,10 +98,17 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     );
   }
 
-  const { ownerId } = getOrCreateReviewOwner(request);
+  const session = await getAuthenticatedSession(request);
+  if (!session) {
+    return reviewErrorResponse(
+      "Your temporary session is unavailable or has expired.",
+      "session_unavailable",
+      401,
+    );
+  }
   const result = await getDocumentReviewStore().removeQuestion(
     documentId,
-    ownerId,
+    session.id,
     questionId,
     mutation.data.expectedRevision,
     mutation.data.mutationId,
@@ -103,4 +133,4 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     );
   }
   return reviewMutationResponse(result.document, result.idempotent);
-}
+});

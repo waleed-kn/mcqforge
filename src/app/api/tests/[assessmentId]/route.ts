@@ -1,27 +1,32 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { reviewSessionCookieName } from "@/application/config/document-review";
-import { getReviewOwnerFromCookie } from "@/application/services/review-session";
+import { getAuthenticatedSession, isSameOriginMutation } from "@/application/services/review-session";
 import { toActiveAssessment } from "@/domain/assessment";
 import { getAssessmentStore } from "@/infrastructure/storage/assessment-store";
 import { answerUpdateSchema } from "@/validation/assessment";
+import { csrfRejectedResponse, withStorageErrorHandling } from "@/application/services/api-security";
+import { resourceIdSchema } from "@/validation/identifiers";
 
 type RouteContext = {
   params: Promise<{ assessmentId: string }>;
 };
 
-export async function GET(request: NextRequest, context: RouteContext) {
+export const GET = withStorageErrorHandling(async function GET(request: NextRequest, context: RouteContext) {
   const { assessmentId } = await context.params;
-  const ownerId = getReviewOwnerFromCookie(
-    request.cookies.get(reviewSessionCookieName)?.value,
-  );
-  if (!ownerId) {
+  if (!resourceIdSchema.safeParse(assessmentId).success) {
+    return NextResponse.json(
+      { error: { code: "invalid_test_id", message: "The test ID is invalid." } },
+      { status: 400 },
+    );
+  }
+  const session = await getAuthenticatedSession(request);
+  if (!session) {
     return NextResponse.json(
       { error: { code: "session_unavailable", message: "Your test session is unavailable." } },
       { status: 401 },
     );
   }
 
-  const assessment = await getAssessmentStore().getOwned(assessmentId, ownerId);
+  const assessment = await getAssessmentStore().getOwned(assessmentId, session.id);
   if (!assessment) {
     return NextResponse.json(
       { error: { code: "test_unavailable", message: "This test is unavailable or has expired." } },
@@ -29,20 +34,17 @@ export async function GET(request: NextRequest, context: RouteContext) {
     );
   }
   return NextResponse.json({ assessment: toActiveAssessment(assessment) });
-}
+});
 
-export async function PATCH(request: NextRequest, context: RouteContext) {
+export const PATCH = withStorageErrorHandling(async function PATCH(request: NextRequest, context: RouteContext) {
+  if (!isSameOriginMutation(request)) return csrfRejectedResponse();
   const { assessmentId } = await context.params;
-  const ownerId = getReviewOwnerFromCookie(
-    request.cookies.get(reviewSessionCookieName)?.value,
-  );
-  if (!ownerId) {
+  if (!resourceIdSchema.safeParse(assessmentId).success) {
     return NextResponse.json(
-      { error: { code: "session_unavailable", message: "Your test session is unavailable." } },
-      { status: 401 },
+      { error: { code: "invalid_test_id", message: "The test ID is invalid." } },
+      { status: 400 },
     );
   }
-
   let body: unknown;
   try {
     body = await request.json();
@@ -59,10 +61,17 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       { status: 400 },
     );
   }
+  const session = await getAuthenticatedSession(request);
+  if (!session) {
+    return NextResponse.json(
+      { error: { code: "session_unavailable", message: "Your test session is unavailable." } },
+      { status: 401 },
+    );
+  }
 
   const result = await getAssessmentStore().updateAnswer(
     assessmentId,
-    ownerId,
+    session.id,
     parsed.data.questionId,
     parsed.data.answer,
     parsed.data.expectedRevision,
@@ -110,14 +119,19 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     assessment: toActiveAssessment(result.assessment),
     idempotent: result.idempotent,
   });
-}
+});
 
-export async function POST(request: NextRequest, context: RouteContext) {
+export const POST = withStorageErrorHandling(async function POST(request: NextRequest, context: RouteContext) {
+  if (!isSameOriginMutation(request)) return csrfRejectedResponse();
   const { assessmentId } = await context.params;
-  const ownerId = getReviewOwnerFromCookie(
-    request.cookies.get(reviewSessionCookieName)?.value,
-  );
-  if (!ownerId) {
+  if (!resourceIdSchema.safeParse(assessmentId).success) {
+    return NextResponse.json(
+      { error: { code: "invalid_test_id", message: "The test ID is invalid." } },
+      { status: 400 },
+    );
+  }
+  const session = await getAuthenticatedSession(request);
+  if (!session) {
     return NextResponse.json(
       { error: { code: "session_unavailable", message: "Your test session is unavailable." } },
       { status: 401 },
@@ -125,9 +139,21 @@ export async function POST(request: NextRequest, context: RouteContext) {
   }
   const result = await getAssessmentStore().submit(
     assessmentId,
-    ownerId,
+    session.id,
     Date.now(),
   );
+  if (result.status === "conflict") {
+    return NextResponse.json(
+      {
+        error: {
+          code: "submission_conflict",
+          message: "The test changed during submission. Retry to submit the latest saved answers.",
+        },
+        assessment: toActiveAssessment(result.assessment),
+      },
+      { status: 409 },
+    );
+  }
   if (result.status !== "submitted") {
     return NextResponse.json(
       { error: { code: "test_unavailable", message: "This test is unavailable or has expired." } },
@@ -143,4 +169,4 @@ export async function POST(request: NextRequest, context: RouteContext) {
     },
     { status: result.idempotent ? 200 : 201 },
   );
-}
+});

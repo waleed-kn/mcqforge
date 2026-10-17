@@ -9,6 +9,7 @@ export type CreateAssessmentInput = AssessmentRecord;
 export type CreateAssessmentResult =
   | { status: "created"; assessment: AssessmentRecord }
   | { status: "duplicate"; assessment: AssessmentRecord }
+  | { status: "session_unavailable" }
   | { status: "conflict" };
 
 export type AssessmentMutationResult =

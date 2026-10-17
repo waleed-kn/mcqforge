@@ -1,18 +1,20 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { assessmentConfigurationSchema } from "@/validation/assessment";
-import { getReviewOwnerFromCookie } from "@/application/services/review-session";
-import { reviewSessionCookieName } from "@/application/config/document-review";
+import { getAuthenticatedSession, isSameOriginMutation } from "@/application/services/review-session";
 import { createAssessmentRecord, CreateAssessmentError } from "@/application/services/create-assessment";
 import { toActiveAssessment } from "@/domain/assessment";
 import { getDocumentReviewStore } from "@/infrastructure/storage/document-review-store";
 import { getAssessmentStore } from "@/infrastructure/storage/assessment-store";
+import { csrfRejectedResponse, rateLimitedResponse, withStorageErrorHandling } from "@/application/services/api-security";
+import { consumeRequestRateLimit } from "@/application/services/review-session";
 
 function errorResponse(message: string, code: string, status: number) {
   return NextResponse.json({ error: { code, message } }, { status });
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withStorageErrorHandling(async function POST(request: NextRequest) {
+  if (!isSameOriginMutation(request)) return csrfRejectedResponse();
   let body: unknown;
   try {
     body = await request.json();
@@ -29,11 +31,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const ownerId = getReviewOwnerFromCookie(
-    request.cookies.get(reviewSessionCookieName)?.value,
-  );
-  if (!ownerId) {
+  const session = await getAuthenticatedSession(request);
+  if (!session) {
     return errorResponse("Your review session is unavailable. Upload the document again.", "session_unavailable", 401);
+  }
+  const ownerId = session.id;
+  if (!(await consumeRequestRateLimit(request, "test-create", ownerId))) {
+    return rateLimitedResponse();
   }
 
   const { documentId, requestId, questionCount, mode, durationMinutes } = parsed.data;
@@ -70,6 +74,13 @@ export async function POST(request: NextRequest) {
       availableQuestions: validQuestions,
     });
     const result = await getAssessmentStore().create(record);
+    if (result.status === "session_unavailable") {
+      return errorResponse(
+        "Your temporary session expired before the test could be created. Upload the document again.",
+        "session_unavailable",
+        401,
+      );
+    }
     if (result.status === "conflict") {
       return errorResponse(
         "This start request ID was already used for a different test configuration. Start again.",
@@ -90,4 +101,4 @@ export async function POST(request: NextRequest) {
     }
     throw error;
   }
-}
+});

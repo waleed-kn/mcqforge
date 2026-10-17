@@ -6,6 +6,7 @@ import { getAssessmentStore } from "@/infrastructure/storage/assessment-store";
 import { activeAssessmentSchema } from "@/validation/assessment";
 import { GET, PATCH, POST } from "./route";
 import { GET as GET_RESULT } from "./result/route";
+import { getSessionStore } from "@/infrastructure/storage/session-store";
 
 function createRequest(
   assessmentId: string,
@@ -17,6 +18,7 @@ function createRequest(
     method,
     headers: {
       cookie: `mcqforge_session=${ownerId}`,
+      origin: `http://localhost`,
       ...(body === undefined ? {} : { "content-type": "application/json" }),
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -29,6 +31,7 @@ function context(assessmentId: string) {
 
 async function createRecord(deadline: number | null = null) {
   const ownerId = randomUUID();
+  await getSessionStore().create(ownerId, Date.now());
   const questionId = randomUUID();
   const record = createAssessmentRecord({
     id: randomUUID(),
@@ -61,6 +64,32 @@ async function createRecord(deadline: number | null = null) {
 }
 
 describe("assessment mutation API", () => {
+  it("rejects cross-site answer and submission mutations", async () => {
+    const { ownerId, assessment, questionId } = await createRecord();
+    const request = new NextRequest(`http://localhost/api/tests/${assessment.id}`, {
+      method: "PATCH",
+      headers: {
+        cookie: `mcqforge_session=${ownerId}`,
+        origin: "http://attacker.test",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        questionId,
+        answer: "A",
+        expectedRevision: 0,
+        mutationId: randomUUID(),
+      }),
+    });
+    const rejected = await PATCH(request, context(assessment.id));
+    expect(rejected.status).toBe(403);
+
+    const submitRequest = new NextRequest(`http://localhost/api/tests/${assessment.id}`, {
+      method: "POST",
+      headers: { cookie: `mcqforge_session=${ownerId}`, origin: "null" },
+    });
+    expect((await POST(submitRequest, context(assessment.id))).status).toBe(403);
+  });
+
   it("saves validated answers, returns them after reload, and never exposes answer keys", async () => {
     const { ownerId, assessment, questionId } = await createRecord();
     const body = {
@@ -102,7 +131,7 @@ describe("assessment mutation API", () => {
     expect(invalid.status).toBe(400);
 
     const unauthorized = await PATCH(
-      createRequest(assessment.id, randomUUID(), "PATCH", {
+      createRequest(assessment.id, await createOtherSessionId(), "PATCH", {
         questionId,
         answer: "A",
         expectedRevision: 0,
@@ -216,17 +245,25 @@ describe("assessment mutation API", () => {
     expect((await resultResponse.json()).result.totalQuestions).toBe(1);
 
     const unauthorized = await GET_RESULT(
-      createRequest(assessment.id, randomUUID(), "GET"),
+      createRequest(assessment.id, await createOtherSessionId(), "GET"),
       context(assessment.id),
     );
     expect(unauthorized.status).toBe(410);
   });
 
   it("returns 410 for invalid or expired assessment identifiers", async () => {
+    const ownerId = await createOtherSessionId();
+    const invalidId = randomUUID();
     const response = await GET_RESULT(
-      createRequest(randomUUID(), randomUUID(), "GET"),
-      context(randomUUID()),
+      createRequest(invalidId, ownerId, "GET"),
+      context(invalidId),
     );
     expect(response.status).toBe(410);
   });
 });
+
+async function createOtherSessionId() {
+  const id = randomUUID();
+  await getSessionStore().create(id, Date.now());
+  return id;
+}

@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getOrCreateReviewOwner } from "@/application/services/review-session";
+import { getAuthenticatedSession, isSameOriginMutation } from "@/application/services/review-session";
+import { csrfRejectedResponse, withStorageErrorHandling } from "@/application/services/api-security";
 import {
   reviewErrorResponse,
   reviewMutationResponse,
@@ -7,13 +8,18 @@ import {
 import { getReviewSummary } from "@/domain/review-document";
 import { getDocumentReviewStore } from "@/infrastructure/storage/document-review-store";
 import { reviewMutationSchema } from "@/validation/document-review";
+import { resourceIdSchema } from "@/validation/identifiers";
 
 type RouteContext = {
   params: Promise<{ documentId: string }>;
 };
 
-export async function POST(request: NextRequest, context: RouteContext) {
+export const POST = withStorageErrorHandling(async function POST(request: NextRequest, context: RouteContext) {
+  if (!isSameOriginMutation(request)) return csrfRejectedResponse();
   const { documentId } = await context.params;
+  if (!resourceIdSchema.safeParse(documentId).success) {
+    return reviewErrorResponse("The document ID is invalid.", "invalid_document_id", 400);
+  }
   let body: unknown;
   try {
     body = await request.json();
@@ -29,7 +35,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
     );
   }
 
-  const { ownerId } = getOrCreateReviewOwner(request);
+  const session = await getAuthenticatedSession(request);
+  if (!session) {
+    return reviewErrorResponse(
+      "Your temporary session is unavailable or has expired.",
+      "session_unavailable",
+      401,
+    );
+  }
+  const ownerId = session.id;
   const store = getDocumentReviewStore();
   const current = await store.getOwned(documentId, ownerId);
   if (!current) {
@@ -75,4 +89,4 @@ export async function POST(request: NextRequest, context: RouteContext) {
     );
   }
   return reviewMutationResponse(result.document, result.idempotent);
-}
+});

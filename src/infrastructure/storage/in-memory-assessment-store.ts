@@ -4,6 +4,7 @@ import type {
   CreateAssessmentInput,
   CreateAssessmentResult,
 } from "@/application/ports/assessment-store";
+import type { SessionStore } from "@/application/ports/session-store";
 import type { AssessmentRecord } from "@/domain/assessment";
 import { finalizeAssessment, getSubmissionSummary } from "@/domain/assessment";
 import type { AnswerOptionId } from "@/domain/question";
@@ -12,8 +13,13 @@ export class InMemoryAssessmentStore implements AssessmentStore {
   private readonly assessments = new Map<string, AssessmentRecord>();
   private readonly requests = new Map<string, string>();
 
+  constructor(private readonly sessions?: SessionStore) {}
+
   async create(input: CreateAssessmentInput): Promise<CreateAssessmentResult> {
     this.pruneExpired();
+    if (this.sessions && !(await this.sessions.get(input.ownerId, Date.now()))) {
+      return { status: "session_unavailable" };
+    }
     const requestKey = `${input.ownerId}:${input.requestId}`;
     const existingId = this.requests.get(requestKey);
     if (existingId) {
@@ -39,6 +45,7 @@ export class InMemoryAssessmentStore implements AssessmentStore {
     ownerId: string,
   ): Promise<AssessmentRecord | null> {
     this.pruneExpired();
+    if (this.sessions && !(await this.sessions.get(ownerId, Date.now()))) return null;
     let assessment = this.assessments.get(assessmentId);
     if (!assessment || assessment.ownerId !== ownerId) return null;
     if (
@@ -62,6 +69,9 @@ export class InMemoryAssessmentStore implements AssessmentStore {
     now: number,
   ): Promise<AssessmentMutationResult> {
     this.pruneExpired();
+    if (this.sessions && !(await this.sessions.get(ownerId, now))) {
+      return { status: "not_found" };
+    }
     const assessment = this.assessments.get(assessmentId);
     if (!assessment || assessment.ownerId !== ownerId) return { status: "not_found" };
 
@@ -108,6 +118,9 @@ export class InMemoryAssessmentStore implements AssessmentStore {
     now: number,
   ): Promise<AssessmentMutationResult> {
     this.pruneExpired();
+    if (this.sessions && !(await this.sessions.get(ownerId, now))) {
+      return { status: "not_found" };
+    }
     const assessment = this.assessments.get(assessmentId);
     if (!assessment || assessment.ownerId !== ownerId) return { status: "not_found" };
     const idempotent = assessment.status === "submitted";

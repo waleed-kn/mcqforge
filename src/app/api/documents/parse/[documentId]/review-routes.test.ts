@@ -8,6 +8,7 @@ import {
   PATCH as updateQuestion,
 } from "./questions/[questionId]/route";
 import { getDocumentReviewStore } from "@/infrastructure/storage/document-review-store";
+import { getSessionStore } from "@/infrastructure/storage/session-store";
 import type { CreateReviewDocumentInput } from "@/application/ports/document-review-store";
 import type { MultipleChoiceQuestion } from "@/domain/question";
 
@@ -29,8 +30,10 @@ function createQuestion(
 }
 
 async function createReviewDocument(question: MultipleChoiceQuestion) {
+  const ownerId = randomUUID();
+  await getSessionStore().create(ownerId, Date.now());
   const input: CreateReviewDocumentInput = {
-    ownerId: randomUUID(),
+    ownerId,
     metadata: {
       id: randomUUID(),
       fileName: "questions.txt",
@@ -52,6 +55,7 @@ function createJsonRequest(url: string, method: string, ownerId: string, body?: 
     headers: {
       cookie: `mcqforge_session=${ownerId}`,
       "content-type": "application/json",
+      origin: new URL(url).origin,
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
@@ -78,10 +82,12 @@ describe("document review API", () => {
     expect(ownerResponse.status).toBe(200);
     expect((await ownerResponse.json()).questions[0].correctOption).toBe("B");
 
+    const otherOwnerId = randomUUID();
+    await getSessionStore().create(otherOwnerId, Date.now());
     const otherRequest = createJsonRequest(
       `http://localhost/api/documents/parse/${document.metadata.id}`,
       "GET",
-      randomUUID(),
+      otherOwnerId,
     );
     const otherResponse = await getReview(otherRequest, documentContext(document.metadata.id));
     expect(otherResponse.status).toBe(410);

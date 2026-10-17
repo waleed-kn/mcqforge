@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { reviewSessionCookieName } from "@/application/config/document-review";
-import { getReviewOwnerFromCookie } from "@/application/services/review-session";
+import { getAuthenticatedSessionById } from "@/application/services/review-session";
 import { getAssessmentStore } from "@/infrastructure/storage/assessment-store";
 import { AssessmentResults } from "@/components/assessment/assessment-results";
 import { assessmentResultSchema } from "@/validation/assessment";
@@ -14,12 +14,18 @@ type ResultsPageProps = {
 async function ResultsContent({ params }: ResultsPageProps) {
   const { assessmentId } = await params;
   const cookieStore = await cookies();
-  const ownerId = getReviewOwnerFromCookie(
-    cookieStore.get(reviewSessionCookieName)?.value,
-  );
-  const assessment = ownerId
-    ? await getAssessmentStore().getOwned(assessmentId, ownerId)
-    : null;
+  let assessment = null;
+  let storageUnavailable = false;
+  try {
+    const session = await getAuthenticatedSessionById(
+      cookieStore.get(reviewSessionCookieName)?.value,
+    );
+    assessment = session
+      ? await getAssessmentStore().getOwned(assessmentId, session.id)
+      : null;
+  } catch {
+    storageUnavailable = true;
+  }
 
   if (!assessment || assessment.status !== "submitted" || !assessment.result) {
     return (
@@ -27,7 +33,9 @@ async function ResultsContent({ params }: ResultsPageProps) {
         <p className="eyebrow">RESULTS / UNAVAILABLE</p>
         <h1>Results are not available.</h1>
         <p className="handoff-message">
-          This test may have expired, belongs to another session, or has not been submitted.
+          {storageUnavailable
+            ? "Temporary storage is unavailable. Retry shortly."
+            : "This test may have expired, belongs to another session, or has not been submitted."}
         </p>
         <Link className="back-link" href="/">Start with a document</Link>
       </main>
