@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { cookies } from "next/headers";
+import { connection } from "next/server";
 import { reviewSessionCookieName } from "@/application/config/document-review";
 import { getAuthenticatedSessionById } from "@/application/services/review-session";
 import { reviewDocumentResponse } from "@/application/services/review-api";
@@ -11,6 +12,7 @@ type ReviewPageProps = {
 };
 
 async function ReviewContent({ params }: ReviewPageProps) {
+  await connection();
   const { documentId } = await params;
   const cookieStore = await cookies();
   let document = null;

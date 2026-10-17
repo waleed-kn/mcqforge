@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
+import { connection } from "next/server";
 import { reviewSessionCookieName } from "@/application/config/document-review";
 import { getAuthenticatedSessionById } from "@/application/services/review-session";
 import { toActiveAssessment } from "@/domain/assessment";
@@ -13,6 +14,7 @@ type TestPageProps = {
 };
 
 async function TestContent({ params }: TestPageProps) {
+  await connection();
   const { assessmentId } = await params;
   const cookieStore = await cookies();
   let record = null;

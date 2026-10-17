@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 import {
   hasQuestionEdits,
@@ -86,7 +85,6 @@ export function ReviewWorkspace({
   initialDocument,
   initialError,
 }: ReviewWorkspaceProps) {
-  const router = useRouter();
   const [document, setDocument] = useState<ReviewDocumentResponse | null>(
     initialDocument,
   );
@@ -315,7 +313,9 @@ export function ReviewWorkspace({
         return;
       }
       setConfirming(false);
-      router.push(`/configure/${documentId}`);
+      window.location.assign(
+        new URL(`/configure/${documentId}`, window.location.origin),
+      );
     } catch {
       setError("Could not reach the review service. Your question set was not confirmed.");
       setConfirming(false);

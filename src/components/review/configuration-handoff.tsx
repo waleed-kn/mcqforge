@@ -110,7 +110,7 @@ export function ConfigurationHandoff({ documentId }: { documentId: string }) {
         setError("The server returned an invalid test response. Please try again.");
         return;
       }
-      router.push(`/test/${result.data.assessment.id}`);
+      window.location.replace(`/test/${result.data.assessment.id}`);
     } catch {
       setError("Could not reach the test service. Your request is safe to retry.");
     } finally {

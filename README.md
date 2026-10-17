@@ -183,10 +183,13 @@ npm run dev
 npm run lint
 npm run typecheck
 npm test
+npm run test:e2e
 npm run build
 ```
 
-Playwright tests may require additional browser installation and configuration. Consult the repository's testing instructions before running them.
+Install the local Chromium binary once with `npx playwright install chromium`. The browser suite starts an isolated Next.js development server with explicit in-memory storage and uses only its checked-in TXT fixture; it does not connect to Upstash or production data. CI runs the same browser suite on Chromium.
+
+The browser suite covers the upload-to-results journey, persisted question edits, keyboard answer selection/navigation and submission-dialog focus behavior, timed-test countdown setup, unauthenticated access denial, invalid/oversized/unsupported uploads, and a narrow landing-page viewport. Deadline expiration and authoritative timeout finalization are tested at the API/domain clock boundary by Vitest rather than waiting 15 minutes in a browser.
 
 ## Configuration
 
@@ -215,6 +218,30 @@ The current PDF parser uses the `pdfjs-dist/legacy/build/pdf.mjs` Node entry poi
 Mutation routes reject missing, malformed, or cross-site `Origin` headers and reject browser `Sec-Fetch-Site: cross-site` requests. Production deployments must configure the exact public origin in `APP_ORIGIN`. The upload rate limiter uses the proxy-provided client-address header before a session exists; configure the hosting proxy to overwrite/strip client-supplied `X-Forwarded-For`. Requests are rate-limited atomically in Redis. Redis Lua compare-and-set operations serialize question edits, answer changes, test creation, and finalization; a stale concurrent change is rejected rather than silently overwriting newer state.
 
 Rate limits are per session for test creation and per client address (or existing session) for uploads. They are a basic abuse-control boundary, not a substitute for edge-level DDoS controls. Redis TTL is an expiration mechanism, not a guarantee of immediate erasure from provider backups or infrastructure logs. No uploaded original file is stored after extraction; parsed question text is temporary session data.
+
+## Deployment
+
+Deploy to a Node.js host that supports the Next.js 16 App Router, Node 22, server-side Route Handlers, and request payloads of at least 4.5 MB (including multipart overhead). The PDF parser is loaded from its Node legacy entry point and DOCX/PDF processing runs in the server process. The configured default upload limit is 4 MiB; the parser also limits PDFs to 300 pages, extracted text to 1,000,000 characters, expanded DOCX content to 20 MiB, and review sets to 1,000 questions. At most two uploads are being parsed per Node.js process; excess requests receive a retryable 503. This is a per-instance resource guard, not a global limit across serverless instances, so retain edge-level abuse protection. Keep `MAX_DOCUMENT_UPLOAD_BYTES` below the hosting request-body cap. Hosts with lower limits need a smaller value; uploads larger than the platform cap require a different ingestion design.
+
+Release/deployment steps:
+
+1. Use Node 22 and run `npm ci`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run test:e2e`, and `npm run build`.
+2. Provision a dedicated Upstash Redis database for the environment. Set `MCQFORGE_STORAGE_DRIVER=redis`, `UPSTASH_REDIS_REST_URL`, and `UPSTASH_REDIS_REST_TOKEN` as server-side secrets. Never configure the memory driver in production.
+3. Set `APP_ORIGIN` to the exact HTTPS origin users visit (scheme and host, no path). Configure the edge proxy to overwrite or strip inbound `X-Forwarded-For` and `X-Real-IP` before these headers reach the app.
+4. Set `MAX_DOCUMENT_UPLOAD_BYTES` to a value supported by both this app (1 KiB–50 MiB) and the hosting platform; keep the default 4 MiB on platforms with a 4.5 MB request limit.
+5. Configure and test health/error monitoring without capturing request bodies, uploaded text, answer keys, cookies, or Redis tokens. Confirm the host's function timeout and memory limits are sufficient for the configured PDF/DOCX workload.
+6. Verify the deployed app can create and expire a session using the production Redis database, and verify a second browser session cannot access that data. Use a non-production Redis database for these checks.
+
+Production-readiness checklist:
+
+- [ ] CI passes lint, typecheck, all unit/API tests, production build, and Chromium workflows.
+- [ ] Production Redis credentials and exact `APP_ORIGIN` are set; no memory fallback is enabled.
+- [ ] Proxy forwarding-header behavior, TLS, cookie attributes, upload cap, and rate limits are verified in the actual host.
+- [ ] Redis concurrency/TTL behavior is smoke-tested against a non-production Redis instance.
+- [ ] Operational monitoring and retention/privacy practices match the deployment and Redis provider configuration.
+- [ ] Accessibility and responsive behavior are checked on supported browsers/devices; OCR and irregular-layout parsing limitations are communicated to users.
+
+The repository CI and local build are not a substitute for validating host-specific timeouts, body limits, Redis connectivity, operational monitoring, or a production security configuration. No deployment provider or live Redis service has been exercised as part of this project.
 
 ## Reliability and security
 
@@ -311,8 +338,9 @@ src/
 - [x] Server-side scoring and results review
 - [x] Redis-backed temporary sessions and security hardening
 - [x] Unit and API integration coverage for implemented workflows
-- [ ] Browser-level end-to-end coverage
-- [ ] CI pipeline and deployment verification
+- [x] Browser-level end-to-end coverage for core workflows
+- [x] CI pipeline for static/unit/build checks and Chromium workflows
+- [ ] Deployment-provider and live Redis verification
 
 Update this checklist as features are implemented and verified.
 

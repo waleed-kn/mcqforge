@@ -1,8 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { ActiveAssessment, SubmissionSummary } from "@/domain/assessment";
 import { moveAssessmentQuestion } from "@/domain/assessment";
 import type { AnswerOptionId } from "@/domain/question";
@@ -13,6 +19,10 @@ import {
   assessmentErrorResponseSchema,
   assessmentMutationResponseSchema,
 } from "@/validation/assessment";
+
+const subscribeToHydration = () => () => {};
+const getClientHydrationSnapshot = () => true;
+const getServerHydrationSnapshot = () => false;
 
 type PendingAnswer = {
   answer: AnswerOptionId;
@@ -41,7 +51,6 @@ function formatRemaining(milliseconds: number) {
 export function TestTakingWorkspace({
   initialAssessment,
 }: TestTakingWorkspaceProps) {
-  const router = useRouter();
   const [assessment, setAssessment] = useState(initialAssessment);
   const assessmentRef = useRef(initialAssessment);
   const [answers, setAnswers] = useState(initialAssessment.answers);
@@ -52,9 +61,15 @@ export function TestTakingWorkspace({
   const nextTimeoutRetryAt = useRef(0);
   const [saveStates, setSaveStates] = useState<Record<string, "pending" | "saved" | "failed">>({});
   const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
+  const hydrated = useSyncExternalStore(
+    subscribeToHydration,
+    getClientHydrationSnapshot,
+    getServerHydrationSnapshot,
+  );
   const [remainingMs, setRemainingMs] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const submitDialogRef = useRef<HTMLElement>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submission, setSubmission] = useState<SubmissionSummary | null>(
     initialAssessment.status === "submitted"
@@ -87,9 +102,9 @@ export function TestTakingWorkspace({
       setSubmission(summary);
       setConfirmOpen(false);
       setSubmitting(false);
-      router.push(`/results/${next.id}`);
+      window.location.replace(`/results/${next.id}`);
     },
-    [router, updateAssessment],
+    [updateAssessment],
   );
 
   const drainAnswerQueue = useCallback(async () => {
@@ -270,6 +285,34 @@ export function TestTakingWorkspace({
     return () => window.removeEventListener("beforeunload", warnAboutPendingAnswers);
   }, []);
 
+  useEffect(() => {
+    if (!confirmOpen) return;
+    const dialog = submitDialogRef.current;
+    const buttons = dialog?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)");
+    const firstButton = buttons?.item(0);
+    const lastButton = buttons?.item(buttons.length - 1);
+    firstButton?.focus();
+
+    function handleDialogKeys(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setConfirmOpen(false);
+        document.getElementById("submit-test")?.focus();
+      } else if (event.key === "Tab" && buttons?.length) {
+        if (event.shiftKey && document.activeElement === firstButton) {
+          event.preventDefault();
+          lastButton?.focus();
+        } else if (!event.shiftKey && document.activeElement === lastButton) {
+          event.preventDefault();
+          firstButton?.focus();
+        }
+      }
+    }
+
+    document.addEventListener("keydown", handleDialogKeys);
+    return () => document.removeEventListener("keydown", handleDialogKeys);
+  }, [confirmOpen]);
+
   const currentQuestion = assessment.questions[activeQuestionIndex] ?? null;
   const answeredCount = useMemo(
     () => assessment.questions.filter((question) => answers[question.id] !== undefined).length,
@@ -289,7 +332,7 @@ export function TestTakingWorkspace({
   }
 
   return (
-    <main className="site-shell test-taking-shell">
+    <main aria-busy={!hydrated} className="site-shell test-taking-shell">
       <header className="review-masthead">
         <Link className="wordmark" href="/" aria-label="MCQForge home">
           <span className="wordmark-mark" aria-hidden="true">M</span>
@@ -317,13 +360,17 @@ export function TestTakingWorkspace({
             <span className="handoff-number">{String(submission?.answered ?? answeredCount).padStart(2, "0")}</span>
             <div>
               <h2>Your answers are finalized.</h2>
-              <p>Scoring and the detailed results view are not part of this implementation phase.</p>
+              <p>Your score and detailed answer review are ready.</p>
             </div>
           </div>
+          <Link className="empty-link" href={`/results/${assessment.id}`}>
+            View your results <span>↗</span>
+          </Link>
           <Link className="empty-link" href="/">Start with another document <span>↗</span></Link>
         </section>
       ) : (
         <>
+          {!hydrated && <p role="status">Loading test controls…</p>}
           <section className="test-intro" aria-labelledby="test-title">
             <div>
               <p className="eyebrow"><span>04</span> WORK THROUGH YOUR QUESTIONS</p>
@@ -378,6 +425,7 @@ export function TestTakingWorkspace({
                     aria-label={`Question ${index + 1}${answers[question.id] ? ", answered" : ", unanswered"}`}
                     aria-current={activeQuestionIndex === index ? "step" : undefined}
                     className={`test-index-item${activeQuestionIndex === index ? " active" : ""}${answers[question.id] ? " answered" : ""}`}
+                    disabled={!hydrated}
                     key={`${question.id}-${index}`}
                     onClick={() => setActiveQuestionIndex(index)}
                     type="button"
@@ -396,7 +444,11 @@ export function TestTakingWorkspace({
               <section className="test-question-panel" aria-labelledby={`question-${currentQuestion.id}`}>
                 <div className="test-question-heading">
                   <span>QUESTION {String(activeQuestionIndex + 1).padStart(2, "0")} / {String(assessment.questions.length).padStart(2, "0")}</span>
-                  <span className={`answer-save-state ${saveStates[currentQuestion.id] ?? (answers[currentQuestion.id] ? "saved" : "")}`}>
+                  <span
+                    aria-live="polite"
+                    className={`answer-save-state ${saveStates[currentQuestion.id] ?? (answers[currentQuestion.id] ? "saved" : "")}`}
+                    role="status"
+                  >
                     {saveStates[currentQuestion.id] === "pending"
                       ? "SAVING…"
                       : saveStates[currentQuestion.id] === "failed"
@@ -407,7 +459,7 @@ export function TestTakingWorkspace({
                   </span>
                 </div>
                 <h2 id={`question-${currentQuestion.id}`}>{currentQuestion.prompt}</h2>
-                <fieldset className="test-options" disabled={isLocked || submitting}>
+                <fieldset className="test-options" disabled={!hydrated || isLocked || submitting}>
                   <legend>Select one answer</legend>
                   {(["A", "B", "C", "D"] as const).map((option) => (
                     <label
@@ -429,7 +481,7 @@ export function TestTakingWorkspace({
                 <div className="test-navigation">
                   <button
                     className="secondary-action"
-                    disabled={activeQuestionIndex === 0}
+                    disabled={!hydrated || activeQuestionIndex === 0}
                     onClick={() => setActiveQuestionIndex((index) =>
                       moveAssessmentQuestion(index, assessment.questions.length, -1),
                     )}
@@ -439,7 +491,7 @@ export function TestTakingWorkspace({
                   </button>
                   <button
                     className="secondary-action"
-                    disabled={activeQuestionIndex === assessment.questions.length - 1}
+                    disabled={!hydrated || activeQuestionIndex === assessment.questions.length - 1}
                     onClick={() => setActiveQuestionIndex((index) =>
                       moveAssessmentQuestion(index, assessment.questions.length, 1),
                     )}
@@ -455,7 +507,8 @@ export function TestTakingWorkspace({
           <footer className="test-submit-bar">
             <p>{answeredCount} answered · {assessment.questions.length - answeredCount} unanswered</p>
             <Button
-              disabled={submitting || hasFailedSave || hasPendingSave}
+              id="submit-test"
+              disabled={!hydrated || submitting || hasFailedSave || hasPendingSave}
               onClick={() => setConfirmOpen(true)}
               type="button"
             >
@@ -469,6 +522,7 @@ export function TestTakingWorkspace({
       {confirmOpen && (
         <div className="test-dialog-backdrop">
           <section
+            ref={submitDialogRef}
             aria-labelledby="submit-confirm-title"
             aria-modal="true"
             className="test-submit-dialog"
@@ -481,7 +535,14 @@ export function TestTakingWorkspace({
               You cannot change answers after submission.
             </p>
             <div className="test-dialog-actions">
-              <button className="secondary-action" onClick={() => setConfirmOpen(false)} type="button">
+              <button
+                className="secondary-action"
+                onClick={() => {
+                  setConfirmOpen(false);
+                  document.getElementById("submit-test")?.focus();
+                }}
+                type="button"
+              >
                 Keep working
               </button>
               <Button

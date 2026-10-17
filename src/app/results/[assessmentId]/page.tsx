@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { cookies } from "next/headers";
+import { connection } from "next/server";
 import { reviewSessionCookieName } from "@/application/config/document-review";
 import { getAuthenticatedSessionById } from "@/application/services/review-session";
 import { getAssessmentStore } from "@/infrastructure/storage/assessment-store";
@@ -12,6 +13,7 @@ type ResultsPageProps = {
 };
 
 async function ResultsContent({ params }: ResultsPageProps) {
+  await connection();
   const { assessmentId } = await params;
   const cookieStore = await cookies();
   let assessment = null;

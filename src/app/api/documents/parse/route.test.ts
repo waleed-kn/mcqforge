@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "./route";
 
@@ -61,5 +61,22 @@ describe("POST /api/documents/parse", () => {
     );
     expect(invalidFileResponse.status).toBe(415);
     expect((await invalidFileResponse.json()).error.code).toBe("invalid_signature");
+  });
+
+  it("rejects files over the configured limit even without a content-length header", async () => {
+    vi.stubEnv("MAX_DOCUMENT_UPLOAD_BYTES", "1024");
+    try {
+      const response = await POST(
+        createRequest(
+          new File([new Uint8Array(1025)], "oversized.txt", {
+            type: "text/plain",
+          }),
+        ),
+      );
+      expect(response.status).toBe(413);
+      expect((await response.json()).error.code).toBe("resource_limit");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
