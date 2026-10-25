@@ -11,6 +11,7 @@ import {
 } from "@/validation/document-review";
 import { Button } from "@/components/ui/button";
 import { ErrorMessage } from "@/components/ui/error-message";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 
 type LoadState = "loading" | "ready" | "unavailable";
 
@@ -125,7 +126,10 @@ export function ConfigurationHandoff({ documentId }: { documentId: string }) {
           <span className="wordmark-mark" aria-hidden="true">M</span>
           <span>MCQ<span className="wordmark-light">FORGE</span></span>
         </Link>
-        <span className="status-label">TEST CONFIGURATION</span>
+        <div className="masthead-actions">
+          <ThemeToggle />
+          <span className="status-label">TEST CONFIGURATION</span>
+        </div>
       </header>
       <section aria-labelledby="configuration-title">
         <p className="eyebrow"><span>03</span> SET YOUR PACE / START</p>

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { AssessmentResult } from "@/domain/assessment";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 
 type AssessmentResultsProps = {
   result: AssessmentResult;
@@ -19,7 +20,10 @@ export function AssessmentResults({ result }: AssessmentResultsProps) {
           <span className="wordmark-mark" aria-hidden="true">M</span>
           <span>MCQ<span className="wordmark-light">FORGE</span></span>
         </Link>
-        <span className="status-label">FINAL RESULTS</span>
+        <div className="masthead-actions">
+          <ThemeToggle />
+          <span className="status-label">FINAL RESULTS</span>
+        </div>
       </header>
 
       <section className="results-intro" aria-labelledby="results-title">

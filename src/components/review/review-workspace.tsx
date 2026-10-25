@@ -9,6 +9,7 @@ import {
 } from "@/application/services/review-question";
 import { Button } from "@/components/ui/button";
 import { ErrorMessage } from "@/components/ui/error-message";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { QuestionEditor } from "@/components/review/question-editor";
 import {
   reviewErrorResponseSchema,
@@ -346,7 +347,10 @@ export function ReviewWorkspace({
           <span className="wordmark-mark" aria-hidden="true">M</span>
           <span>MCQ<span className="wordmark-light">FORGE</span></span>
         </Link>
-        <Link className="back-link" href="/">← Replace document</Link>
+        <div className="masthead-actions">
+          <ThemeToggle />
+          <Link className="back-link" href="/">← Replace document</Link>
+        </div>
       </header>
 
       <section className="review-intro" aria-labelledby="review-title">

@@ -14,6 +14,7 @@ import { moveAssessmentQuestion } from "@/domain/assessment";
 import type { AnswerOptionId } from "@/domain/question";
 import { Button } from "@/components/ui/button";
 import { ErrorMessage } from "@/components/ui/error-message";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 import {
   assessmentResultSchema,
   assessmentErrorResponseSchema,
@@ -338,7 +339,10 @@ export function TestTakingWorkspace({
           <span className="wordmark-mark" aria-hidden="true">M</span>
           <span>MCQ<span className="wordmark-light">FORGE</span></span>
         </Link>
-        <span className="status-label">{isLocked ? "TEST SUBMITTED" : "TEST IN PROGRESS"}</span>
+        <div className="masthead-actions">
+          <ThemeToggle />
+          <span className="status-label">{isLocked ? "TEST SUBMITTED" : "TEST IN PROGRESS"}</span>
+        </div>
       </header>
 
       {isLocked ? (

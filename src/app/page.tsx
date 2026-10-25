@@ -4,6 +4,8 @@ import { ProgressIndicator } from "@/components/ui/progress-indicator";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { StatusLabel } from "@/components/ui/status-label";
 
+import { ThemeToggle } from "@/components/ui/theme-toggle";
+
 export default function Home() {
   return (
     <main className="site-shell">
@@ -16,7 +18,10 @@ export default function Home() {
           <span className="masthead-dot" aria-hidden="true" />
           <span>Practice, built from your notes</span>
         </div>
-        <StatusLabel>NO ACCOUNT NEEDED</StatusLabel>
+        <div className="masthead-actions">
+          <ThemeToggle />
+          <StatusLabel>NO ACCOUNT NEEDED</StatusLabel>
+        </div>
       </header>
 
       <section className="hero" aria-labelledby="hero-title">
