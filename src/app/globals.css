@@ -47,7 +47,7 @@ input:focus-visible + .file-picker {
 }
 
 .masthead {
-  min-height: 78px;
+  min-height: 60px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -122,21 +122,21 @@ input:focus-visible + .file-picker {
 
 .hero {
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(340px, 0.9fr);
-  gap: clamp(42px, 9vw, 132px);
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+  gap: clamp(24px, 4vw, 56px);
   align-items: center;
-  padding-block: clamp(58px, 9vw, 116px) clamp(72px, 10vw, 128px);
+  padding-block: clamp(24px, 4vw, 48px) clamp(28px, 4.5vw, 56px);
 }
 
 .hero-copy {
-  max-width: 670px;
+  max-width: 620px;
 }
 
 .eyebrow {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin: 0 0 24px;
+  gap: 10px;
+  margin: 0 0 14px;
   color: var(--muted);
 }
 
@@ -147,10 +147,10 @@ input:focus-visible + .file-picker {
 h1 {
   max-width: 740px;
   margin: 0;
-  font-size: clamp(54px, 8.4vw, 108px);
+  font-size: clamp(36px, 5.2vw, 68px);
   font-weight: 900;
-  letter-spacing: -0.085em;
-  line-height: 0.89;
+  letter-spacing: -0.065em;
+  line-height: 0.96;
 }
 
 .highlight {
@@ -172,10 +172,10 @@ h1 {
 
 .hero-description {
   max-width: 440px;
-  margin: 27px 0 34px;
+  margin: 16px 0 24px;
   color: #44413b;
-  font-size: 17px;
-  line-height: 1.6;
+  font-size: 15px;
+  line-height: 1.5;
 }
 
 .progress-indicator {
@@ -238,7 +238,7 @@ h1 {
 .upload-label {
   display: flex;
   justify-content: space-between;
-  padding: 13px 16px;
+  padding: 10px 14px;
   border-bottom: 2px solid var(--ink);
 }
 
@@ -247,15 +247,15 @@ h1 {
 }
 
 .document-upload {
-  padding: 20px;
+  padding: 16px;
 }
 
 .file-picker {
   display: grid;
-  min-height: 194px;
+  min-height: 160px;
   place-content: center;
   justify-items: center;
-  padding: 22px;
+  padding: 18px 16px;
   border: 1px dashed #77736b;
   background: var(--paper);
   text-align: center;
@@ -275,13 +275,13 @@ h1 {
 
 .file-picker-icon {
   display: grid;
-  width: 43px;
-  height: 43px;
+  width: 36px;
+  height: 36px;
   place-items: center;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
   border: 1.5px solid var(--ink);
   background: var(--lime);
-  font-size: 23px;
+  font-size: 20px;
   font-weight: 400;
   line-height: 1;
 }
@@ -289,13 +289,13 @@ h1 {
 .file-picker-title {
   max-width: 270px;
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 800;
   line-height: 1.35;
 }
 
 .file-picker-hint {
-  margin: 8px 0 0;
+  margin: 6px 0 0;
   color: var(--muted);
   font-size: 12px;
 }
@@ -528,7 +528,7 @@ h1 {
 
 .review-masthead {
   display: flex;
-  min-height: 76px;
+  min-height: 58px;
   align-items: center;
   justify-content: space-between;
   border-bottom: 2px solid var(--ink);
@@ -544,25 +544,25 @@ h1 {
 
 .review-intro {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(230px, 0.4fr);
-  gap: 36px;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.38fr);
+  gap: 28px;
   align-items: end;
-  padding-block: 50px 30px;
+  padding-block: 22px 18px;
 }
 
 .review-intro h1,
 .configuration-handoff h1 {
   max-width: 780px;
-  font-size: clamp(45px, 7vw, 82px);
-  line-height: 0.95;
+  font-size: clamp(28px, 4.2vw, 52px);
+  line-height: 0.98;
 }
 
 .review-description {
   max-width: 620px;
-  margin: 20px 0 0;
+  margin: 12px 0 0;
   color: var(--muted);
-  font-size: 15px;
-  line-height: 1.55;
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 .review-document {
@@ -1233,15 +1233,15 @@ h1 {
 
 .configuration-handoff > section {
   max-width: 900px;
-  padding-block: clamp(65px, 10vw, 120px);
+  padding-block: clamp(28px, 4.5vw, 56px);
 }
 
 .handoff-message {
   max-width: 660px;
-  margin: 23px 0 33px;
+  margin: 14px 0 22px;
   color: var(--muted);
-  font-size: 16px;
-  line-height: 1.55;
+  font-size: 15px;
+  line-height: 1.5;
 }
 
 .handoff-note {
@@ -1509,31 +1509,36 @@ h1 {
 }
 
 .test-taking-shell {
-  padding-bottom: 35px;
+  width: min(100% - 48px, 1180px);
+  padding-bottom: 24px;
 }
 
 .test-intro {
   display: flex;
-  align-items: end;
+  align-items: center;
   justify-content: space-between;
-  gap: 30px;
-  padding-block: 44px 24px;
+  gap: 24px;
+  padding-block: 16px 14px;
+}
+
+.test-intro .eyebrow {
+  margin: 0 0 4px;
 }
 
 .test-intro h1,
 .test-submitted h1 {
-  max-width: 760px;
+  max-width: 900px;
   margin: 0;
-  font-size: clamp(42px, 6.7vw, 78px);
+  font-size: clamp(22px, 3vw, 34px);
   font-weight: 900;
-  letter-spacing: -0.075em;
-  line-height: 0.95;
+  letter-spacing: -0.055em;
+  line-height: 1;
 }
 
 .test-meta {
   display: grid;
   justify-items: end;
-  gap: 7px;
+  gap: 4px;
   flex: 0 0 auto;
   color: var(--muted);
   font-size: 9px;
@@ -1549,15 +1554,15 @@ h1 {
 .test-countdown {
   display: flex;
   align-items: baseline;
-  gap: 8px;
-  margin-top: 7px;
-  padding: 7px 10px;
+  gap: 6px;
+  margin-top: 2px;
+  padding: 5px 9px;
   border: 1.5px solid var(--ink);
   background: var(--lime);
   color: var(--ink);
-  font-size: 22px;
+  font-size: 18px;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.06em;
+  letter-spacing: -0.05em;
 }
 
 .test-countdown small {
@@ -1607,9 +1612,9 @@ h1 {
 
 .test-workspace {
   display: grid;
-  grid-template-columns: minmax(155px, 0.32fr) minmax(0, 1fr);
-  gap: clamp(25px, 5vw, 70px);
-  padding-block: 28px 36px;
+  grid-template-columns: minmax(140px, 0.28fr) minmax(0, 1fr);
+  gap: clamp(18px, 3vw, 36px);
+  padding-block: 14px 20px;
 }
 
 .test-question-index {
@@ -1620,7 +1625,7 @@ h1 {
 
 .test-question-index > p:first-child,
 .index-legend {
-  margin: 0 0 12px;
+  margin: 0 0 8px;
   color: var(--muted);
   font-size: 9px;
   font-weight: 800;
@@ -1630,7 +1635,7 @@ h1 {
 .test-question-index > div {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 6px;
+  gap: 5px;
 }
 
 .test-index-item {
@@ -1666,7 +1671,7 @@ h1 {
   flex-wrap: wrap;
   align-items: center;
   gap: 5px;
-  margin-top: 14px;
+  margin-top: 10px;
   font-size: 8px;
   letter-spacing: 0;
   text-transform: none;
@@ -1694,7 +1699,7 @@ h1 {
   display: flex;
   justify-content: space-between;
   gap: 15px;
-  padding-bottom: 13px;
+  padding-bottom: 8px;
   border-bottom: 2px solid var(--ink);
   color: var(--muted);
   font-size: 9px;
@@ -1716,35 +1721,35 @@ h1 {
 }
 
 .test-question-panel h2 {
-  max-width: 860px;
-  margin: 24px 0 25px;
-  font-size: clamp(24px, 3.2vw, 39px);
+  max-width: 800px;
+  margin: 12px 0 14px;
+  font-size: clamp(18px, 2vw, 24px);
   font-weight: 850;
-  letter-spacing: -0.05em;
-  line-height: 1.2;
+  letter-spacing: -0.04em;
+  line-height: 1.25;
 }
 
 .test-options {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   margin: 0;
   padding: 0;
   border: 0;
 }
 
 .test-options legend {
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   color: var(--muted);
   font-size: 11px;
 }
 
 .test-option {
   display: grid;
-  grid-template-columns: 20px 38px minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: 18px 32px minmax(0, 1fr);
+  gap: 10px;
   align-items: center;
-  min-height: 60px;
-  padding: 11px 14px;
+  min-height: 46px;
+  padding: 8px 12px;
   border: 1.5px solid var(--ink);
   cursor: pointer;
 }
@@ -1767,21 +1772,21 @@ h1 {
 }
 
 .test-option-letter {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 900;
 }
 
 .test-option > span:last-child {
-  font-size: 14px;
-  line-height: 1.4;
+  font-size: 13px;
+  line-height: 1.35;
 }
 
 .test-navigation {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 24px;
-  padding-top: 15px;
+  margin-top: 14px;
+  padding-top: 10px;
   border-top: 1px solid var(--rule);
 }
 
@@ -1793,8 +1798,9 @@ h1 {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  padding-top: 16px;
+  gap: 16px;
+  margin-top: 12px;
+  padding-top: 10px;
   border-top: 2px solid var(--ink);
 }
 
@@ -1873,15 +1879,15 @@ h1 {
 .results-intro {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 28px;
+  gap: 24px;
   align-items: end;
-  padding-block: clamp(46px, 8vw, 92px) 28px;
+  padding-block: clamp(24px, 4vw, 48px) 20px;
   border-bottom: 2px solid var(--ink);
 }
 
 .results-heading h1 {
-  font-size: clamp(76px, 15vw, 180px);
-  line-height: 0.8;
+  font-size: clamp(48px, 9vw, 96px);
+  line-height: 0.85;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1891,7 +1897,7 @@ h1 {
 }
 
 .results-heading .eyebrow {
-  margin-bottom: 28px;
+  margin-bottom: 14px;
 }
 
 .results-score-label {
@@ -2316,7 +2322,7 @@ h1 {
   }
 
   .masthead {
-    min-height: 67px;
+    min-height: 56px;
   }
 
   .masthead-note {
@@ -2325,17 +2331,17 @@ h1 {
 
   .hero {
     grid-template-columns: 1fr;
-    gap: 39px;
-    padding-block: 55px 62px;
+    gap: 24px;
+    padding-block: 24px 32px;
   }
 
   h1 {
-    font-size: clamp(58px, 15vw, 88px);
+    font-size: clamp(32px, 8.5vw, 44px);
   }
 
   .hero-description {
-    margin-top: 22px;
-    font-size: 16px;
+    margin-top: 14px;
+    font-size: 14px;
   }
 
   .upload-column {
@@ -2387,7 +2393,7 @@ h1 {
 
   .review-intro h1,
   .configuration-handoff h1 {
-    font-size: clamp(45px, 12vw, 68px);
+    font-size: clamp(26px, 6vw, 36px);
   }
 
   .review-description {
@@ -2544,13 +2550,13 @@ h1 {
   .test-intro {
     align-items: flex-start;
     flex-direction: column;
-    gap: 19px;
-    padding-block: 35px 19px;
+    gap: 12px;
+    padding-block: 16px 12px;
   }
 
   .test-intro h1,
   .test-submitted h1 {
-    font-size: clamp(42px, 12vw, 64px);
+    font-size: clamp(22px, 6vw, 28px);
   }
 
   .test-meta {
