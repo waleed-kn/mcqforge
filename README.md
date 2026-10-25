@@ -211,7 +211,7 @@ APP_ORIGIN=http://localhost:3000
 
 In production, `MCQFORGE_STORAGE_DRIVER=redis`, both Redis credentials, and `APP_ORIGIN` are required. Storage is resolved lazily at request time. Missing credentials, invalid configuration, or Redis failures return a controlled service-unavailable response; the application never falls back to in-memory persistence in production. Do not use `NEXT_PUBLIC_` variables for credentials.
 
-The current PDF parser uses the `pdfjs-dist/legacy/build/pdf.mjs` Node entry point (not its browser viewer or worker bundle). It has been exercised in the Node server runtime used for the production build. It extracts selectable text only; image-only/scanned PDFs fail with an explicit OCR-not-supported message.
+The current PDF parser uses the `pdfjs-dist/legacy/build/pdf.mjs` Node entry point (not its browser viewer or worker bundle). Next.js keeps `pdfjs-dist` external to server bundling so PDF.js can resolve its Node worker correctly. It extracts selectable text only; image-only/scanned PDFs fail with an explicit OCR-not-supported message.
 
 `SESSION_IDLE_TTL_SECONDS` defaults to 7,200 seconds, `SESSION_MAX_LIFETIME_SECONDS` defaults to 86,400 seconds, `MAX_TEMPORARY_RECORD_BYTES` defaults to 2,097,152 bytes, and upload/test-creation limits default to 5/10 requests per minute. Allowed ranges and validation are enforced in `src/application/config/temporary-storage.ts`. Document and test records are children of a server-side session; every access checks that parent session, and child-key TTL is bounded by the refreshed parent expiry and hard lifetime. Results share the test record's expiration policy.
 
